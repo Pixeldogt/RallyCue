@@ -19,7 +19,7 @@ const cherryBombOne = Cherry_Bomb_One({
 });
 
 export const metadata: Metadata = {
-  title: 'CourtCall – Badminton-Ansagen',
+  title: 'RallyCue – Badminton-Ansagen',
   description: 'Spieler auf neun Felder verteilen und Begegnungen direkt aufrufen.',
 };
 

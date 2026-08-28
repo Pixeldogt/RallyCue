@@ -33,8 +33,11 @@ type PendingOverwrite = {
   existingPlayerId: string;
 };
 
-const PLAYER_STORAGE_KEY = 'courtcall.players.v1';
-const COURT_STORAGE_KEY = 'courtcall.courts.v1';
+const PLAYER_STORAGE_KEY = 'rallycue.players.v1';
+const COURT_STORAGE_KEY = 'rallycue.courts.v1';
+const LEGACY_PLAYER_STORAGE_KEY = 'courtcall.players.v1';
+const LEGACY_COURT_STORAGE_KEY = 'courtcall.courts.v1';
+const PLAYER_DRAG_TYPE = 'text/rallycue-player';
 const VOICE_ID = 'de_DE-thorsten-medium';
 const LOCAL_WASM_PATHS = {
   onnxWasm: '/onnx/',
@@ -158,8 +161,12 @@ export default function Home() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const savedPlayers = localStorage.getItem(PLAYER_STORAGE_KEY);
-        const savedCourts = localStorage.getItem(COURT_STORAGE_KEY);
+        const savedPlayers =
+          localStorage.getItem(PLAYER_STORAGE_KEY) ??
+          localStorage.getItem(LEGACY_PLAYER_STORAGE_KEY);
+        const savedCourts =
+          localStorage.getItem(COURT_STORAGE_KEY) ??
+          localStorage.getItem(LEGACY_COURT_STORAGE_KEY);
         if (savedPlayers) setPlayers(JSON.parse(savedPlayers) as Player[]);
         if (savedCourts) setCourts(JSON.parse(savedCourts) as Court[]);
       } catch {
@@ -329,7 +336,7 @@ export default function Home() {
 
   function handleDrop(event: ReactDragEvent, courtId: number, slotIndex: 0 | 1) {
     event.preventDefault();
-    const playerId = event.dataTransfer.getData('text/courtcall-player');
+    const playerId = event.dataTransfer.getData(PLAYER_DRAG_TYPE);
     if (playerId) assignPlayer(playerId, courtId, slotIndex);
   }
 
@@ -427,7 +434,7 @@ export default function Home() {
           <Image src="/courtcall-logo.png" alt="" width={64} height={64} priority />
         </div>
         <div className="brand-copy">
-          <h1>CourtCall</h1>
+          <h1>RallyCue</h1>
           <p>Schülerturnier · 9 Felder</p>
         </div>
         <button
@@ -506,7 +513,7 @@ export default function Home() {
                       draggable
                       key={player.id}
                       onDragStart={(event) => {
-                        event.dataTransfer.setData('text/courtcall-player', player.id);
+                        event.dataTransfer.setData(PLAYER_DRAG_TYPE, player.id);
                         event.dataTransfer.effectAllowed = 'move';
                         setSelectedPlayerId(player.id);
                       }}
