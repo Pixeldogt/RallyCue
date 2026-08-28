@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import Image from 'next/image';
 
 type Player = {
   id: string;
@@ -23,6 +24,13 @@ type Court = {
 
 type LocalTtsSession = {
   predict: (text: string) => Promise<Blob>;
+};
+
+type PendingOverwrite = {
+  playerId: string;
+  courtId: number;
+  slotIndex: 0 | 1;
+  existingPlayerId: string;
 };
 
 const PLAYER_STORAGE_KEY = 'courtcall.players.v1';
@@ -90,6 +98,7 @@ export default function Home() {
   const [formAgeGroup, setFormAgeGroup] = useState('U13');
   const [formCategory, setFormCategory] = useState('Jungen Einzel');
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('Lokale Stimme');
@@ -284,6 +293,17 @@ export default function Home() {
       return;
     }
 
+    const existingPlayerId = targetCourt.players[slotIndex];
+    if (existingPlayerId && existingPlayerId !== playerId) {
+      setPendingOverwrite({ playerId, courtId, slotIndex, existingPlayerId });
+      return;
+    }
+
+    commitAssignment(playerId, courtId, slotIndex);
+  }
+
+  function commitAssignment(playerId: string, courtId: number, slotIndex: 0 | 1) {
+
     setCourts((current) =>
       current.map((court) => {
         const withoutPlayer = court.players.map((id) =>
@@ -296,6 +316,7 @@ export default function Home() {
       }),
     );
     setSelectedPlayerId(null);
+    setPendingOverwrite(null);
   }
 
   function handleSlotClick(courtId: number, slotIndex: 0 | 1) {
@@ -402,7 +423,9 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div className="brand-mark" aria-hidden="true"><span /></div>
+        <div className="brand-mark" aria-hidden="true">
+          <Image src="/courtcall-logo.png" alt="" width={64} height={64} priority />
+        </div>
         <div className="brand-copy">
           <h1>CourtCall</h1>
           <p>Schülerturnier · 9 Felder</p>
@@ -654,6 +677,46 @@ export default function Home() {
           </section>
         </div>
       )}
+
+      {pendingOverwrite && (() => {
+        const incomingPlayer = playerById.get(pendingOverwrite.playerId);
+        const existingPlayer = playerById.get(pendingOverwrite.existingPlayerId);
+        const court = courts.find((item) => item.id === pendingOverwrite.courtId);
+        const completeMatch = Boolean(court?.players[0] && court?.players[1]);
+        return (
+          <div className="dialog-backdrop" role="presentation">
+            <section className="player-dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="overwrite-dialog-title">
+              <span className="warning-mark" aria-hidden="true">!</span>
+              <p className="eyebrow">Sicherheitsabfrage</p>
+              <h2 id="overwrite-dialog-title">{completeMatch ? 'Bestehende Begegnung ändern?' : 'Belegten Platz überschreiben?'}</h2>
+              <p className="confirm-copy">
+                Auf Feld {pendingOverwrite.courtId} ist dieser Platz bereits belegt. Prüfe den Wechsel bitte kurz, bevor er übernommen wird.
+              </p>
+              <div className="overwrite-summary">
+                <div>
+                  <span>Bisher</span>
+                  <strong>{existingPlayer?.name}</strong>
+                </div>
+                <span className="overwrite-arrow" aria-hidden="true">→</span>
+                <div>
+                  <span>Neu</span>
+                  <strong>{incomingPlayer?.name}</strong>
+                </div>
+              </div>
+              <div className="dialog-actions confirm-actions">
+                <button className="cancel-button" onClick={() => setPendingOverwrite(null)} type="button">Abbrechen</button>
+                <button
+                  className="overwrite-button"
+                  onClick={() => commitAssignment(pendingOverwrite.playerId, pendingOverwrite.courtId, pendingOverwrite.slotIndex)}
+                  type="button"
+                >
+                  Trotzdem ersetzen
+                </button>
+              </div>
+            </section>
+          </div>
+        );
+      })()}
 
       {notice && <div className="toast" role="status">{notice}</div>}
     </main>
