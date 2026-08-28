@@ -40,7 +40,7 @@ const manifest = {
   lang: 'de',
   icons: [
     {
-      src: `${basePath}/courtcall-logo.png`,
+      src: `${basePath}/rallycue-logo.png`,
       sizes: 'any',
       type: 'image/png',
       purpose: 'any maskable',

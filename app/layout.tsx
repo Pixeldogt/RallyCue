@@ -28,8 +28,8 @@ export const metadata: Metadata = {
     ? {
         manifest: `${appBasePath}/manifest.webmanifest`,
         icons: {
-          icon: `${appBasePath}/courtcall-logo.png`,
-          apple: `${appBasePath}/courtcall-logo.png`,
+          icon: `${appBasePath}/rallycue-logo.png`,
+          apple: `${appBasePath}/rallycue-logo.png`,
         },
         appleWebApp: {
           capable: true,

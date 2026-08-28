@@ -486,7 +486,7 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-mark" aria-hidden="true">
-          <Image src={`${APP_BASE_PATH}/courtcall-logo.png`} alt="" width={64} height={64} priority />
+          <Image src={`${APP_BASE_PATH}/rallycue-logo.png`} alt="" width={64} height={64} priority />
         </div>
         <div className="brand-copy">
           <h1>RallyCue</h1>
