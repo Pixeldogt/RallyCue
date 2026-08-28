@@ -22,6 +22,10 @@ npm run dev
 
 Der Produktions-Build wird mit `npm run build` erstellt.
 
+## GitHub Pages
+
+Jeder Push auf `main` erstellt automatisch einen statischen, installierbaren Build und veröffentlicht ihn unter [pixeldogt.github.io/RallyCue](https://pixeldogt.github.io/RallyCue/). Für einen manuellen Pages-Build kann `npm run build:pages` verwendet werden.
+
 ## Datenschutz
 
 Spieler und Feldbelegungen werden ausschließlich im lokalen Browserspeicher des jeweiligen Geräts abgelegt. RallyCue verwendet keine gemeinsame Turnierdatenbank.

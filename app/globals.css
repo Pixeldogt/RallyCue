@@ -56,13 +56,16 @@ button { color: inherit; }
 .brand-mark img { width: 62px; height: 62px; max-width: none; object-fit: cover; mix-blend-mode: screen; transform: scale(1.08); }
 .brand-copy h1 { margin: -2px 0 0; font-family: var(--font-brand), cursive; font-size: 25px; font-weight: 400; line-height: 1; letter-spacing: .2px; }
 .brand-copy p { margin: 4px 0 0; color: var(--muted); font-size: 12px; font-weight: 560; }
+.topbar-actions { display: flex; align-items: center; gap: 9px; margin-left: auto; }
+.install-button { height: 39px; padding: 0 14px; border: 1px solid rgba(104, 69, 183, .25); border-radius: 999px; background: white; color: var(--primary-dark); cursor: pointer; font-size: 12px; font-weight: 700; }
+.install-button:hover { background: var(--primary-soft); }
 
 .event-status,
 .voice-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
+  margin-left: 0;
   padding: 10px 14px;
   border: 0;
   border-radius: 999px;

@@ -8,8 +8,9 @@
   "scripts": {
     "dev": "node scripts/copy-tts-assets.mjs && vinext dev",
     "build": "node scripts/copy-tts-assets.mjs && vinext build",
+    "build:pages": "node scripts/build-pages.mjs",
     "start": "vinext start",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern public/onnx"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern out --ignore-pattern .next --ignore-pattern public/onnx"
   },
   "dependencies": {
     "@diffusionstudio/piper-wasm": "^1.0.0",

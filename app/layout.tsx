@@ -18,9 +18,26 @@ const cherryBombOne = Cherry_Bomb_One({
   subsets: ['latin'],
 });
 
+const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+const pwaEnabled = process.env.NEXT_PUBLIC_ENABLE_PWA === 'true';
+
 export const metadata: Metadata = {
   title: 'RallyCue – Badminton-Ansagen',
   description: 'Spieler auf neun Felder verteilen und Begegnungen direkt aufrufen.',
+  ...(pwaEnabled
+    ? {
+        manifest: `${appBasePath}/manifest.webmanifest`,
+        icons: {
+          icon: `${appBasePath}/courtcall-logo.png`,
+          apple: `${appBasePath}/courtcall-logo.png`,
+        },
+        appleWebApp: {
+          capable: true,
+          statusBarStyle: 'default' as const,
+          title: 'RallyCue',
+        },
+      }
+    : {}),
 };
 
 export default function RootLayout({

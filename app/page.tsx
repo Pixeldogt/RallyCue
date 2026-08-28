@@ -26,6 +26,11 @@ type LocalTtsSession = {
   predict: (text: string) => Promise<Blob>;
 };
 
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+};
+
 type PendingOverwrite = {
   playerId: string;
   courtId: number;
@@ -38,11 +43,13 @@ const COURT_STORAGE_KEY = 'rallycue.courts.v1';
 const LEGACY_PLAYER_STORAGE_KEY = 'courtcall.players.v1';
 const LEGACY_COURT_STORAGE_KEY = 'courtcall.courts.v1';
 const PLAYER_DRAG_TYPE = 'text/rallycue-player';
+const APP_BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+const PWA_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PWA === 'true';
 const VOICE_ID = 'de_DE-thorsten-medium';
 const LOCAL_WASM_PATHS = {
-  onnxWasm: '/onnx/',
-  piperData: '/piper/piper_phonemize.data',
-  piperWasm: '/piper/piper_phonemize.wasm',
+  onnxWasm: `${APP_BASE_PATH}/onnx/`,
+  piperData: `${APP_BASE_PATH}/piper/piper_phonemize.data`,
+  piperWasm: `${APP_BASE_PATH}/piper/piper_phonemize.wasm`,
 };
 const AGE_GROUPS = ['U11', 'U13', 'U15', 'U17', 'U19'];
 const CATEGORIES = ['Jungen Einzel', 'Mädchen Einzel'];
@@ -105,6 +112,8 @@ export default function Home() {
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('Lokale Stimme');
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsSessionRef = useRef<LocalTtsSession | null>(null);
@@ -187,6 +196,41 @@ export default function Home() {
     if (!hydrated) return;
     localStorage.setItem(COURT_STORAGE_KEY, JSON.stringify(courts));
   }, [courts, hydrated]);
+
+  useEffect(() => {
+    if (!PWA_ENABLED) return;
+
+    const standaloneTimer = window.setTimeout(() => {
+      const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+      setIsStandalone(
+        window.matchMedia('(display-mode: standalone)').matches ||
+          standaloneNavigator.standalone === true,
+      );
+    }, 0);
+
+    if ('serviceWorker' in navigator) {
+      void navigator.serviceWorker
+        .register(`${APP_BASE_PATH}/sw.js`)
+        .catch((error) => console.error('Service Worker konnte nicht registriert werden.', error));
+    }
+
+    const handleInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleInstallPrompt);
+    window.addEventListener('appinstalled', handleInstalled);
+    return () => {
+      window.clearTimeout(standaloneTimer);
+      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -384,6 +428,17 @@ export default function Home() {
     }
   }
 
+  async function installApp() {
+    if (!installPrompt) {
+      showNotice('Im Browsermenü „App installieren“ oder „Zum Dock hinzufügen“ auswählen.');
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') setInstallPrompt(null);
+  }
+
   async function announceCourt(court: Court) {
     const first = court.players[0] ? playerById.get(court.players[0]) : null;
     const second = court.players[1] ? playerById.get(court.players[1]) : null;
@@ -431,22 +486,29 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-mark" aria-hidden="true">
-          <Image src="/courtcall-logo.png" alt="" width={64} height={64} priority />
+          <Image src={`${APP_BASE_PATH}/courtcall-logo.png`} alt="" width={64} height={64} priority />
         </div>
         <div className="brand-copy">
           <h1>RallyCue</h1>
           <p>Schülerturnier · 9 Felder</p>
         </div>
-        <button
-          className={`voice-status ${voiceReady ? 'ready' : ''}`}
-          disabled={voiceBusy}
-          onClick={() => void prepareVoice()}
-          type="button"
-        >
-          <span aria-hidden="true" />
-          {voiceStatus}
-          {!voiceReady && !voiceBusy && <strong>Vorbereiten</strong>}
-        </button>
+        <div className="topbar-actions">
+          {PWA_ENABLED && !isStandalone && (
+            <button className="install-button" onClick={() => void installApp()} type="button">
+              App installieren
+            </button>
+          )}
+          <button
+            className={`voice-status ${voiceReady ? 'ready' : ''}`}
+            disabled={voiceBusy}
+            onClick={() => void prepareVoice()}
+            type="button"
+          >
+            <span aria-hidden="true" />
+            {voiceStatus}
+            {!voiceReady && !voiceBusy && <strong>Vorbereiten</strong>}
+          </button>
+        </div>
       </header>
 
       <div className="workspace">
