@@ -11,6 +11,14 @@ import {
 } from 'react';
 import Image from 'next/image';
 import {
+  applyPronunciationDictionary,
+  MAX_PRONUNCIATION_REPLACEMENT_LENGTH,
+  MAX_PRONUNCIATION_SOURCE_LENGTH,
+  mergePronunciationDictionaries,
+  validatePronunciationDictionary,
+  type PronunciationEntry,
+} from '@/lib/pronunciation-dictionary';
+import {
   AGE_GROUPS,
   CATEGORIES,
   DEFAULT_SPEED_ID,
@@ -59,12 +67,19 @@ type SelectedTarget = {
   slotIndex: SlotIndex;
 };
 
+type VoicePreparationOptions = {
+  allowDownload: boolean;
+  silent: boolean;
+  background: boolean;
+};
+
 const PLAYER_STORAGE_KEY = 'rallycue.players.v1';
 const COURT_STORAGE_KEY = 'rallycue.courts.v1';
 const LEGACY_PLAYER_STORAGE_KEY = 'courtcall.players.v1';
 const LEGACY_COURT_STORAGE_KEY = 'courtcall.courts.v1';
 const VOICE_STORAGE_KEY = 'rallycue.voice.v1';
 const SPEED_STORAGE_KEY = 'rallycue.speed.v1';
+const PRONUNCIATION_STORAGE_KEY = 'rallycue.pronunciation.v1';
 const PLAYER_DRAG_TYPE = 'text/rallycue-player';
 const APP_BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const PWA_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PWA === 'true';
@@ -116,6 +131,13 @@ export default function Home() {
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
   const [pendingClearCourtId, setPendingClearCourtId] = useState<number | null>(null);
+  const [customPronunciations, setCustomPronunciations] = useState<PronunciationEntry[]>([]);
+  const [isPronunciationDialogOpen, setPronunciationDialogOpen] = useState(false);
+  const [isPronunciationEditorOpen, setPronunciationEditorOpen] = useState(false);
+  const [editingPronunciationIndex, setEditingPronunciationIndex] = useState<number | null>(null);
+  const [pronunciationSource, setPronunciationSource] = useState('');
+  const [pronunciationReplacement, setPronunciationReplacement] = useState('');
+  const [pronunciationError, setPronunciationError] = useState<string | null>(null);
   const [selectedSpeedId, setSelectedSpeedId] = useState<SpeedId>(DEFAULT_SPEED_ID);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
@@ -127,6 +149,7 @@ export default function Home() {
   const audioUrlRef = useRef<string | null>(null);
   const ttsSessionRef = useRef<LocalTtsSession | null>(null);
   const sessionVoiceRef = useRef<VoiceId | null>(null);
+  const voicePreparationRef = useRef<Promise<boolean> | null>(null);
 
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
@@ -178,6 +201,10 @@ export default function Home() {
   }, [visiblePlayers]);
 
   const interactionPlayerId = draggedPlayerId ?? selectedPlayerId;
+  const mergedPronunciationDictionary = useMemo(
+    () => mergePronunciationDictionaries(customPronunciations),
+    [customPronunciations],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -191,6 +218,7 @@ export default function Home() {
         const savedCourtsRaw =
           localStorage.getItem(COURT_STORAGE_KEY) ??
           localStorage.getItem(LEGACY_COURT_STORAGE_KEY);
+        const savedPronunciationsRaw = localStorage.getItem(PRONUNCIATION_STORAGE_KEY);
 
         const savedPlayers = savedPlayersRaw ? JSON.parse(savedPlayersRaw) : [];
         const savedCourts = savedCourtsRaw
@@ -198,9 +226,14 @@ export default function Home() {
           : createEmptyCourts();
         const validated = validateTournamentState(savedPlayers, savedCourts);
         if (!validated.ok) throw new Error(validated.error);
+        const validatedPronunciations = validatePronunciationDictionary(
+          savedPronunciationsRaw ? JSON.parse(savedPronunciationsRaw) : [],
+        );
+        if (!validatedPronunciations.ok) throw new Error(validatedPronunciations.error);
 
         setPlayers(validated.value.players);
         setCourts(validated.value.courts);
+        setCustomPronunciations(validatedPronunciations.value);
         setCanPersist(true);
       } catch (error) {
         const detail = error instanceof Error ? error.message : 'Unbekannter Fehler';
@@ -220,6 +253,10 @@ export default function Home() {
     try {
       localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(players));
       localStorage.setItem(COURT_STORAGE_KEY, JSON.stringify(courts));
+      localStorage.setItem(
+        PRONUNCIATION_STORAGE_KEY,
+        JSON.stringify(customPronunciations),
+      );
     } catch {
       window.setTimeout(() => {
         setCanPersist(false);
@@ -228,7 +265,7 @@ export default function Home() {
         );
       }, 0);
     }
-  }, [canPersist, courts, hydrated, players]);
+  }, [canPersist, courts, customPronunciations, hydrated, players]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -283,39 +320,71 @@ export default function Home() {
         setSelectedPlayerId(null);
         setSelectedTarget(null);
         setPendingClearCourtId(null);
+        setPronunciationDialogOpen(false);
+        setPronunciationEditorOpen(false);
+        setEditingPronunciationIndex(null);
+        setPronunciationError(null);
       }
     };
     window.addEventListener('keydown', handleShortcut);
     return () => window.removeEventListener('keydown', handleShortcut);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function checkVoice() {
-      try {
-        const tts = await import('@mintplex-labs/piper-tts-web');
-        const storedVoices = await tts.stored();
-        if (!cancelled) {
-          const stored = storedVoices.includes(DEFAULT_VOICE_ID);
-          setVoiceReady(false);
-          setVoiceStatus(stored ? 'Stimme lokal verfügbar' : 'Download erforderlich');
-        }
-      } catch {
-        if (!cancelled) {
-          setVoiceReady(false);
-          setVoiceStatus('Stimme wird bei Bedarf geladen');
-        }
-      }
-    }
-    void checkVoice();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   function showNotice(message: string) {
     setNotice(message);
     window.setTimeout(() => setNotice(null), 4200);
+  }
+
+  function resetPronunciationEditor() {
+    setPronunciationEditorOpen(false);
+    setEditingPronunciationIndex(null);
+    setPronunciationSource('');
+    setPronunciationReplacement('');
+    setPronunciationError(null);
+  }
+
+  function openPronunciationDictionary() {
+    setAnnouncementDialogOpen(false);
+    resetPronunciationEditor();
+    setPronunciationDialogOpen(true);
+  }
+
+  function closePronunciationDictionary() {
+    setPronunciationDialogOpen(false);
+    resetPronunciationEditor();
+  }
+
+  function startPronunciationEntry(index: number | null) {
+    const entry = index === null ? null : customPronunciations[index];
+    setEditingPronunciationIndex(index);
+    setPronunciationSource(entry?.source ?? '');
+    setPronunciationReplacement(entry?.replacement ?? '');
+    setPronunciationError(null);
+    setPronunciationEditorOpen(true);
+  }
+
+  function savePronunciationEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const candidate = { source: pronunciationSource, replacement: pronunciationReplacement };
+    const nextEntries = [...customPronunciations];
+    if (editingPronunciationIndex === null) nextEntries.push(candidate);
+    else nextEntries[editingPronunciationIndex] = candidate;
+
+    const validated = validatePronunciationDictionary(nextEntries);
+    if (!validated.ok) {
+      setPronunciationError(validated.error);
+      return;
+    }
+
+    setCustomPronunciations(validated.value);
+    resetPronunciationEditor();
+    showNotice('Aussprache wurde gespeichert.');
+  }
+
+  function deletePronunciationEntry(index: number) {
+    setCustomPronunciations((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    if (editingPronunciationIndex === index) resetPronunciationEditor();
+    showNotice('Aussprache wurde gelöscht.');
   }
 
   function openNewPlayerDialog() {
@@ -531,50 +600,82 @@ export default function Home() {
     }
   }
 
-  async function ensureVoiceReady() {
-    if (voiceBusy) return false;
+  async function prepareVoice(options: VoicePreparationOptions) {
     if (ttsSessionRef.current && sessionVoiceRef.current === DEFAULT_VOICE_ID) return true;
-    setVoiceBusy(true);
-    setVoiceStatus('Stimme wird geladen …');
-    let phase: 'check' | 'download' | 'verify' | 'initialize' = 'check';
-    try {
-      const tts = await import('@mintplex-labs/piper-tts-web');
-      const storedVoices = await tts.stored();
-      const downloadedNow = !storedVoices.includes(DEFAULT_VOICE_ID);
-      if (downloadedNow) {
-        phase = 'download';
-        await tts.download(DEFAULT_VOICE_ID, (progress) => {
-          const percent = progress.total
-            ? Math.round((progress.loaded / progress.total) * 100)
-            : 0;
-          setVoiceStatus(percent ? `Stimme laden · ${percent} %` : 'Stimme wird geladen …');
-        });
-        phase = 'verify';
-        setVoiceStatus('Stimme wird gespeichert …');
-        await waitForStoredVoice(tts);
+    if (voicePreparationRef.current) return voicePreparationRef.current;
+
+    const preparation = (async () => {
+      setVoiceBusy(true);
+      setVoiceStatus(options.background ? 'Stimme wird vorbereitet …' : 'Stimme wird geladen …');
+      let phase: 'check' | 'download' | 'verify' | 'initialize' = 'check';
+      let modelStored = false;
+      try {
+        const tts = await import('@mintplex-labs/piper-tts-web');
+        const storedVoices = await tts.stored();
+        modelStored = storedVoices.includes(DEFAULT_VOICE_ID);
+        if (!modelStored && !options.allowDownload) {
+          setVoiceReady(false);
+          setVoiceStatus('Download erforderlich');
+          return false;
+        }
+
+        const downloadedNow = !modelStored;
+        if (downloadedNow) {
+          phase = 'download';
+          await tts.download(DEFAULT_VOICE_ID, (progress) => {
+            const percent = progress.total
+              ? Math.round((progress.loaded / progress.total) * 100)
+              : 0;
+            setVoiceStatus(percent ? `Stimme laden · ${percent} %` : 'Stimme wird geladen …');
+          });
+          phase = 'verify';
+          setVoiceStatus('Stimme wird gespeichert …');
+          await waitForStoredVoice(tts);
+          modelStored = true;
+        }
+        phase = 'initialize';
+        setVoiceStatus(options.background ? 'Stimme wird vorbereitet …' : 'Stimme wird initialisiert …');
+        ttsSessionRef.current = await createVoiceSession(tts, downloadedNow);
+        sessionVoiceRef.current = DEFAULT_VOICE_ID;
+        setVoiceReady(true);
+        setVoiceStatus('Stimme bereit');
+        return true;
+      } catch (error) {
+        console.error(`Thorsten konnte in Phase "${phase}" nicht vorbereitet werden.`, error);
+        ttsSessionRef.current = null;
+        sessionVoiceRef.current = null;
+        setVoiceReady(false);
+        setVoiceStatus(modelStored ? 'Stimme lokal verfügbar' : 'Stimme nicht verfügbar');
+        if (!options.silent) {
+          showNotice(
+            phase === 'download'
+              ? 'Die Stimme konnte nicht heruntergeladen werden. Netzwerkverbindung prüfen und erneut versuchen.'
+              : 'Die Stimme konnte nicht initialisiert werden. Bitte erneut versuchen.',
+          );
+        }
+        return false;
+      } finally {
+        setVoiceBusy(false);
       }
-      phase = 'initialize';
-      setVoiceStatus('Stimme wird initialisiert …');
-      ttsSessionRef.current = await createVoiceSession(tts, downloadedNow);
-      sessionVoiceRef.current = DEFAULT_VOICE_ID;
-      setVoiceReady(true);
-      setVoiceStatus('Stimme bereit');
-      return true;
-    } catch (error) {
-      console.error(`Thorsten konnte in Phase "${phase}" nicht vorbereitet werden.`, error);
-      ttsSessionRef.current = null;
-      sessionVoiceRef.current = null;
-      setVoiceReady(false);
-      setVoiceStatus('Stimme nicht verfügbar');
-      showNotice(
-        phase === 'download'
-          ? 'Die Stimme konnte nicht heruntergeladen werden. Netzwerkverbindung prüfen und erneut versuchen.'
-          : 'Die Stimme konnte nicht initialisiert werden. Bitte erneut versuchen.',
-      );
-      return false;
+    })();
+
+    voicePreparationRef.current = preparation;
+    try {
+      return await preparation;
     } finally {
-      setVoiceBusy(false);
+      if (voicePreparationRef.current === preparation) voicePreparationRef.current = null;
     }
+  }
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void prepareVoice({ allowDownload: false, silent: true, background: true });
+    // Background warm-up is intentionally tied only to the one-time hydration transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
+  async function ensureVoiceReady() {
+    return prepareVoice({ allowDownload: true, silent: false, background: false });
   }
 
   function finishAudio(audio: HTMLAudioElement, audioUrl: string) {
@@ -599,7 +700,11 @@ export default function Home() {
       if (!session || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
         throw new Error('Piper session is not ready for Thorsten.');
       }
-      const audioBlob = await session.predict(text);
+      const spokenText = applyPronunciationDictionary(
+        text,
+        mergedPronunciationDictionary,
+      );
+      const audioBlob = await session.predict(spokenText);
       stopCurrentAudio();
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
@@ -646,7 +751,7 @@ export default function Home() {
       const backup = createBackup(players, courts, {
         voiceId: DEFAULT_VOICE_ID,
         speedId: selectedSpeedId,
-      });
+      }, customPronunciations);
       const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], {
         type: 'application/json',
       });
@@ -677,7 +782,9 @@ export default function Home() {
       }
 
       const hasCurrentData =
-        players.length > 0 || courts.some((court) => court.players.some(Boolean));
+        players.length > 0 ||
+        courts.some((court) => court.players.some(Boolean)) ||
+        customPronunciations.length > 0;
       if (
         hasCurrentData &&
         !window.confirm(
@@ -692,6 +799,7 @@ export default function Home() {
       sessionVoiceRef.current = null;
       setPlayers(result.value.players);
       setCourts(result.value.courts);
+      setCustomPronunciations(result.value.pronunciationDictionary ?? []);
       if (result.value.settings) {
         setSelectedSpeedId(result.value.settings.speedId);
       }
@@ -1091,6 +1199,18 @@ export default function Home() {
               </div>
             </div>
 
+            <button
+              className="dictionary-open-button"
+              onClick={openPronunciationDictionary}
+              type="button"
+            >
+              <span>
+                <strong>Aussprachewörterbuch</strong>
+                <small>Namen zentral für alle Ansagen korrigieren</small>
+              </span>
+              <span aria-hidden="true">{customPronunciations.length} eigene ›</span>
+            </button>
+
             <div className="dialog-actions announcement-actions">
               <button className="cancel-button" onClick={() => setAnnouncementDialogOpen(false)} type="button">Schließen</button>
               <button
@@ -1109,6 +1229,105 @@ export default function Home() {
               >
                 Testansage abspielen
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {isPronunciationDialogOpen && (
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closePronunciationDictionary();
+        }}>
+          <section className="player-dialog pronunciation-dialog" role="dialog" aria-modal="true" aria-labelledby="pronunciation-dialog-title">
+            <div className="dialog-heading">
+              <div>
+                <p className="eyebrow">Lokale Sprachausgabe</p>
+                <h2 id="pronunciation-dialog-title">Aussprachewörterbuch</h2>
+              </div>
+              <button onClick={closePronunciationDictionary} type="button" aria-label="Dialog schließen">×</button>
+            </div>
+
+            <p className="dictionary-intro">
+              Eigene Einträge gelten zusätzlich zu den mitgelieferten Aussprachen und haben Vorrang.
+            </p>
+
+            <div className="dictionary-list">
+              {customPronunciations.length === 0 ? (
+                <div className="dictionary-empty">
+                  <strong>Noch keine eigenen Aussprachen</strong>
+                  <span>Mitgelieferte Korrekturen sind bereits aktiv.</span>
+                </div>
+              ) : customPronunciations.map((entry, index) => (
+                <article className="dictionary-entry" key={`${entry.source}-${index}`}>
+                  <div className="dictionary-copy">
+                    <span>{entry.source}</span>
+                    <span aria-hidden="true">→</span>
+                    <strong>{entry.replacement}</strong>
+                  </div>
+                  <div className="dictionary-entry-actions">
+                    <button
+                      disabled={voiceBusy}
+                      onClick={() => void speakText(`Es spielt ${entry.replacement}.`, 'Aussprache testen …')}
+                      type="button"
+                    >
+                      Testen
+                    </button>
+                    <button onClick={() => startPronunciationEntry(index)} type="button">Bearbeiten</button>
+                    <button className="dictionary-delete-button" onClick={() => deletePronunciationEntry(index)} type="button">Löschen</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {isPronunciationEditorOpen ? (
+              <form className="dictionary-editor" onSubmit={savePronunciationEntry}>
+                <div className="dictionary-editor-heading">
+                  <strong>{editingPronunciationIndex === null ? 'Aussprache hinzufügen' : 'Aussprache bearbeiten'}</strong>
+                  <button onClick={resetPronunciationEditor} type="button" aria-label="Editor schließen">×</button>
+                </div>
+                <div className="dictionary-form-grid">
+                  <label className="form-field">
+                    <span>Original</span>
+                    <input
+                      autoFocus
+                      maxLength={MAX_PRONUNCIATION_SOURCE_LENGTH}
+                      onChange={(event) => {
+                        setPronunciationSource(event.target.value);
+                        setPronunciationError(null);
+                      }}
+                      placeholder="z. B. Chen Xuan"
+                      required
+                      value={pronunciationSource}
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Aussprache</span>
+                    <input
+                      maxLength={MAX_PRONUNCIATION_REPLACEMENT_LENGTH}
+                      onChange={(event) => {
+                        setPronunciationReplacement(event.target.value);
+                        setPronunciationError(null);
+                      }}
+                      placeholder="z. B. Tschenn Schüän"
+                      required
+                      value={pronunciationReplacement}
+                    />
+                  </label>
+                </div>
+                {pronunciationError && <p className="dictionary-error" role="alert">{pronunciationError}</p>}
+                <div className="dictionary-editor-actions">
+                  <button className="cancel-button" onClick={resetPronunciationEditor} type="button">Abbrechen</button>
+                  <button className="save-button" type="submit">Speichern</button>
+                </div>
+              </form>
+            ) : (
+              <button className="dictionary-add-button" onClick={() => startPronunciationEntry(null)} type="button">
+                + Aussprache hinzufügen
+              </button>
+            )}
+
+            <div className="dialog-actions dictionary-dialog-actions">
+              <button className="cancel-button" onClick={closePronunciationDictionary} type="button">Schließen</button>
             </div>
           </section>
         </div>

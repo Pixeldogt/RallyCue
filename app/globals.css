@@ -264,6 +264,38 @@ button { color: inherit; }
 .settings-voice-state strong { font-size: 11px; }
 .settings-voice-state small { color: var(--muted); font-size: 9px; line-height: 1.35; }
 .announcement-actions { justify-content: flex-end; flex-wrap: wrap; }
+.dictionary-open-button { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; margin-top: 12px; padding: 13px 14px; border: 1px solid rgba(104, 69, 183, .2); border-radius: 15px; background: white; color: var(--primary-dark); cursor: pointer; text-align: left; }
+.dictionary-open-button:hover { background: var(--primary-soft); }
+.dictionary-open-button > span:first-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.dictionary-open-button strong { font-size: 11px; }
+.dictionary-open-button small { color: var(--muted); font-size: 9px; }
+.dictionary-open-button > span:last-child { flex: 0 0 auto; font-size: 10px; font-weight: 720; }
+.pronunciation-dialog { width: min(680px, 100%); max-height: min(760px, calc(100vh - 60px)); overflow-y: auto; }
+.dictionary-intro { margin: -10px 0 16px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.dictionary-list { display: grid; gap: 8px; }
+.dictionary-empty { display: flex; padding: 20px; border: 1px dashed var(--outline); border-radius: 16px; background: var(--surface-low); color: var(--muted); align-items: center; flex-direction: column; gap: 3px; text-align: center; }
+.dictionary-empty strong { color: var(--ink); font-size: 12px; }
+.dictionary-empty span { font-size: 10px; }
+.dictionary-entry { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--outline); border-radius: 15px; background: #fbfafc; }
+.dictionary-copy { display: grid; min-width: 0; flex: 1; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; font-size: 11px; }
+.dictionary-copy span:first-child, .dictionary-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dictionary-copy span:nth-child(2) { color: var(--primary); font-size: 15px; }
+.dictionary-copy strong { color: var(--primary-dark); }
+.dictionary-entry-actions { display: flex; flex: 0 0 auto; gap: 5px; }
+.dictionary-entry-actions button { height: 30px; padding: 0 9px; border: 1px solid var(--outline); border-radius: 9px; background: white; color: var(--primary-dark); cursor: pointer; font-size: 9px; font-weight: 700; }
+.dictionary-entry-actions button:hover { background: var(--primary-soft); }
+.dictionary-entry-actions button:disabled { cursor: wait; opacity: .58; }
+.dictionary-entry-actions .dictionary-delete-button { border-color: rgba(156, 49, 86, .16); color: #88435a; }
+.dictionary-editor { margin-top: 12px; padding: 15px; border: 1px solid rgba(104, 69, 183, .2); border-radius: 17px; background: var(--primary-soft); }
+.dictionary-editor-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 12px; }
+.dictionary-editor-heading button { width: 26px; height: 26px; border: 0; border-radius: 50%; background: white; color: var(--muted); cursor: pointer; font-size: 18px; }
+.dictionary-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dictionary-error { margin: 10px 2px 0; color: #9c3156; font-size: 10px; font-weight: 650; }
+.dictionary-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.dictionary-editor-actions button, .dictionary-add-button { height: 38px; padding: 0 14px; border-radius: 12px; cursor: pointer; font-size: 10px; font-weight: 700; }
+.dictionary-add-button { width: 100%; margin-top: 12px; border: 1px dashed rgba(104, 69, 183, .35); background: white; color: var(--primary-dark); }
+.dictionary-add-button:hover { background: var(--primary-soft); }
+.dictionary-dialog-actions { justify-content: flex-end; margin-top: 18px; }
 .confirm-dialog { width: min(500px, 100%); text-align: center; }
 .warning-mark { display: grid; width: 48px; height: 48px; margin: 0 auto 14px; place-items: center; border-radius: 17px; background: #fff0d9; color: #925b08; font-size: 24px; font-weight: 800; }
 .clear-warning-mark { background: #f8e9ed; color: #88435a; }
@@ -283,4 +315,10 @@ button { color: inherit; }
 @media (max-width: 1080px) {
   .workspace { grid-template-columns: 290px minmax(680px, 1fr); }
   .court-area { padding-inline: 24px; }
+}
+
+@media (max-width: 640px) {
+  .dictionary-entry { align-items: stretch; flex-direction: column; }
+  .dictionary-entry-actions { justify-content: flex-end; }
+  .dictionary-form-grid { grid-template-columns: 1fr; }
 }

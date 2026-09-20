@@ -118,6 +118,7 @@ test('Backup-Export und -Import erhalten Spieler und Felder', () => {
     players,
     courts,
     { voiceId: DEFAULT_VOICE_ID, speedId: 'fast' },
+    [],
     '2026-09-20T12:00:00.000Z',
   );
   const result = parseBackup(JSON.stringify(backup));
@@ -129,6 +130,56 @@ test('Backup-Export und -Import erhalten Spieler und Felder', () => {
     voiceId: DEFAULT_VOICE_ID,
     speedId: 'fast',
   });
+  assert.deepEqual(result.value.pronunciationDictionary, []);
+});
+
+test('alte Version-1-Backups ohne Aussprachewörterbuch bleiben importierbar', () => {
+  const result = parseBackup({
+    format: 'rallycue-backup',
+    version: 1,
+    exportedAt: '2026-09-20T12:00:00.000Z',
+    players,
+    courts: withCourt(1, max.id, bernd.id),
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value.pronunciationDictionary, []);
+});
+
+test('neue Backups erhalten das benutzerdefinierte Aussprachewörterbuch', () => {
+  const pronunciationDictionary = [
+    { source: '  Chen   Xuan ', replacement: ' Tschenn   Schüän ' },
+  ];
+  const backup = createBackup(
+    players,
+    withCourt(1, max.id, bernd.id),
+    { voiceId: DEFAULT_VOICE_ID, speedId: 'standard' },
+    pronunciationDictionary,
+    '2026-09-20T12:00:00.000Z',
+  );
+  const result = parseBackup(JSON.stringify(backup));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value.pronunciationDictionary, [
+    { source: 'Chen Xuan', replacement: 'Tschenn Schüän' },
+  ]);
+});
+
+test('ein Backup mit ungültigem Aussprachewörterbuch wird vollständig abgelehnt', () => {
+  const result = parseBackup({
+    format: 'rallycue-backup',
+    version: 1,
+    exportedAt: '2026-09-20T12:00:00.000Z',
+    players,
+    courts: withCourt(1, max.id, bernd.id),
+    pronunciationDictionary: [
+      { source: 'Marcel', replacement: 'Marsell' },
+      { source: 'MARCEL', replacement: 'Marßell' },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /mehrfach/);
 });
 
 for (const legacyVoiceId of LEGACY_VOICE_IDS) {

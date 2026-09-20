@@ -1,3 +1,8 @@
+import {
+  validatePronunciationDictionary,
+  type PronunciationEntry,
+} from './pronunciation-dictionary.ts';
+
 export const AGE_GROUPS = ['U9', 'U11', 'U13', 'U15', 'U17', 'U19'] as const;
 export const CATEGORIES = ['Jungen Einzel', 'Mädchen Einzel'] as const;
 
@@ -57,6 +62,7 @@ export type RallyCueBackup = TournamentState & {
   version: 1;
   exportedAt: string;
   settings?: RallyCueSettings;
+  pronunciationDictionary?: PronunciationEntry[];
 };
 
 export type ValidationResult =
@@ -341,6 +347,7 @@ export function createBackup(
   players: Player[],
   courts: Court[],
   settings?: RallyCueSettings,
+  pronunciationDictionary: PronunciationEntry[] = [],
   exportedAt = new Date().toISOString(),
 ): RallyCueBackup {
   const state = validateTournamentState(players, courts);
@@ -350,6 +357,8 @@ export function createBackup(
   if (settings && (!voiceId || !isSpeedId(settings.speedId))) {
     throw new Error('Die Ansage-Einstellungen sind ungültig.');
   }
+  const validatedPronunciations = validatePronunciationDictionary(pronunciationDictionary);
+  if (!validatedPronunciations.ok) throw new Error(validatedPronunciations.error);
 
   return {
     format: 'rallycue-backup',
@@ -358,6 +367,7 @@ export function createBackup(
     players: state.value.players,
     courts: state.value.courts,
     ...(settings ? { settings: { voiceId: voiceId!, speedId: settings.speedId } } : {}),
+    pronunciationDictionary: validatedPronunciations.value,
   };
 }
 
@@ -399,6 +409,11 @@ export function parseBackup(input: unknown): BackupValidationResult {
     };
   }
 
+  const pronunciationDictionary = parsed.pronunciationDictionary === undefined
+    ? { ok: true as const, value: [] as PronunciationEntry[] }
+    : validatePronunciationDictionary(parsed.pronunciationDictionary);
+  if (!pronunciationDictionary.ok) return pronunciationDictionary;
+
   return {
     ok: true,
     value: {
@@ -408,6 +423,7 @@ export function parseBackup(input: unknown): BackupValidationResult {
       players: state.value.players,
       courts: state.value.courts,
       ...(settings ? { settings } : {}),
+      pronunciationDictionary: pronunciationDictionary.value,
     },
   };
 }
