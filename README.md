@@ -4,12 +4,13 @@ RallyCue unterstützt Badmintonturniere bei der Feldbelegung und bei automatisch
 
 ## Funktionen
 
-- Spieler für Jungen- und Mädchen-Einzel verwalten
+- Spieler der Altersklassen U9 bis U19 für Jungen- und Mädchen-Einzel verwalten
 - Nach Altersklasse, Kategorie und Name filtern
-- Spieler per Drag-and-drop oder Klick einem Feld zuweisen
+- Spieler per Drag-and-drop oder in beiden Klickrichtungen einem Feld zuweisen
 - Sicherheitsabfrage vor dem Überschreiben einer Belegung
-- Deutsche Feldansagen mit einer lokal ausgeführten Piper-Stimme
+- Vier wählbare deutsche Piper-Stimmen mit drei Geschwindigkeiten und Testansage
 - Lokale Speicherung der Turnierdaten im Browser
+- Lokale JSON-Sicherung und Wiederherstellung der Turnierdaten
 
 ## Lokale Entwicklung
 

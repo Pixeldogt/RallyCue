@@ -1,6 +1,6 @@
 {
   "name": "rallycue",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -10,7 +10,8 @@
     "build": "node scripts/copy-tts-assets.mjs && vinext build",
     "build:pages": "node scripts/build-pages.mjs",
     "start": "vinext start",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern out --ignore-pattern .next --ignore-pattern public/onnx"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern out --ignore-pattern .next --ignore-pattern public/onnx",
+    "test": "node --test --experimental-strip-types tests/*.test.mjs"
   },
   "dependencies": {
     "@diffusionstudio/piper-wasm": "^1.0.0",

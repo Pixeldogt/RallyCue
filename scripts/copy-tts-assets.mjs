@@ -1,6 +1,7 @@
-import { copyFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { copyIfChanged } from './copy-if-changed.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -26,7 +27,7 @@ const assets = [
 for (const [source, destination] of assets) {
   const outputPath = resolve(projectRoot, destination);
   await mkdir(dirname(outputPath), { recursive: true });
-  await copyFile(resolve(projectRoot, source), outputPath);
+  await copyIfChanged(resolve(projectRoot, source), outputPath);
 }
 
 console.log('Local Piper runtime assets are ready.');

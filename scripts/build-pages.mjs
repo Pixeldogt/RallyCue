@@ -72,7 +72,8 @@ const assets = (await collectFiles(outDir))
   .map((path) => `${basePath}/${relative(outDir, path).split(sep).join('/')}`)
   .sort();
 
-const serviceWorker = `const CACHE_NAME = ${JSON.stringify(`rallycue-${packageJson.version}`)};
+const serviceWorker = `const CACHE_PREFIX = 'rallycue-';
+const CACHE_NAME = ${JSON.stringify(`rallycue-${packageJson.version}`)};
 const APP_SHELL = ${JSON.stringify(assets, null, 2)};
 const START_URL = ${JSON.stringify(`${basePath}/`)};
 
@@ -87,7 +88,9 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys
+        .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+        .map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });

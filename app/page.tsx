@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  type ChangeEvent,
   type DragEvent as ReactDragEvent,
   type FormEvent,
   useEffect,
@@ -9,18 +10,31 @@ import {
   useState,
 } from 'react';
 import Image from 'next/image';
-
-type Player = {
-  id: string;
-  name: string;
-  ageGroup: string;
-  category: string;
-};
-
-type Court = {
-  id: number;
-  players: [string | null, string | null];
-};
+import {
+  AGE_GROUPS,
+  CATEGORIES,
+  DEFAULT_SPEED_ID,
+  DEFAULT_VOICE_ID,
+  SPEED_OPTIONS,
+  VOICE_OPTIONS,
+  assignPlayerToCourt,
+  createBackup,
+  createEmptyCourts,
+  divisionOf,
+  evaluateAssignment,
+  isSpeedId,
+  isVoiceId,
+  parseBackup,
+  speedRate,
+  validateTournamentState,
+  type AgeGroup,
+  type Category,
+  type Court,
+  type Player,
+  type SlotIndex,
+  type SpeedId,
+  type VoiceId,
+} from '@/lib/rallycue-core';
 
 type LocalTtsSession = {
   predict: (text: string) => Promise<Blob>;
@@ -34,46 +48,31 @@ type InstallPromptEvent = Event & {
 type PendingOverwrite = {
   playerId: string;
   courtId: number;
-  slotIndex: 0 | 1;
+  slotIndex: SlotIndex;
   existingPlayerId: string;
+};
+
+type SelectedTarget = {
+  courtId: number;
+  slotIndex: SlotIndex;
 };
 
 const PLAYER_STORAGE_KEY = 'rallycue.players.v1';
 const COURT_STORAGE_KEY = 'rallycue.courts.v1';
 const LEGACY_PLAYER_STORAGE_KEY = 'courtcall.players.v1';
 const LEGACY_COURT_STORAGE_KEY = 'courtcall.courts.v1';
+const VOICE_STORAGE_KEY = 'rallycue.voice.v1';
+const SPEED_STORAGE_KEY = 'rallycue.speed.v1';
 const PLAYER_DRAG_TYPE = 'text/rallycue-player';
 const APP_BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const PWA_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PWA === 'true';
-const VOICE_ID = 'de_DE-thorsten-medium';
 const LOCAL_WASM_PATHS = {
   onnxWasm: `${APP_BASE_PATH}/onnx/`,
   piperData: `${APP_BASE_PATH}/piper/piper_phonemize.data`,
   piperWasm: `${APP_BASE_PATH}/piper/piper_phonemize.wasm`,
 };
-const AGE_GROUPS = ['U11', 'U13', 'U15', 'U17', 'U19'];
-const CATEGORIES = ['Jungen Einzel', 'Mädchen Einzel'];
-
-const SAMPLE_PLAYERS: Player[] = [
-  { id: 'bernd', name: 'Bernd Beispiel', ageGroup: 'U13', category: 'Jungen Einzel' },
-  { id: 'lina', name: 'Lina Baumann', ageGroup: 'U13', category: 'Mädchen Einzel' },
-  { id: 'max', name: 'Max Mustermann', ageGroup: 'U13', category: 'Jungen Einzel' },
-  { id: 'emil', name: 'Emil Fischer', ageGroup: 'U15', category: 'Jungen Einzel' },
-  { id: 'mara', name: 'Mara Hofmann', ageGroup: 'U15', category: 'Mädchen Einzel' },
-  { id: 'nora', name: 'Nora Klein', ageGroup: 'U15', category: 'Mädchen Einzel' },
-  { id: 'paul', name: 'Paul Wagner', ageGroup: 'U15', category: 'Jungen Einzel' },
-];
-
-const EMPTY_COURTS: Court[] = Array.from({ length: 9 }, (_, index) => ({
-  id: index + 1,
-  players: [null, null],
-}));
-
-const SAMPLE_COURTS: Court[] = EMPTY_COURTS.map((court) => {
-  if (court.id === 1) return { ...court, players: ['max', 'bernd'] };
-  if (court.id === 2) return { ...court, players: ['mara', null] };
-  return court;
-});
+const TEST_ANNOUNCEMENT =
+  'Testansage. Es spielen auf Feld vier Max Mustermann gegen Bernd Beispiel.';
 
 function initials(name: string) {
   return name
@@ -84,10 +83,6 @@ function initials(name: string) {
     .join('');
 }
 
-function divisionOf(player: Player) {
-  return `${player.category} ${player.ageGroup}`;
-}
-
 function sortPlayers(players: Player[]) {
   return [...players].sort((a, b) =>
     a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }),
@@ -95,28 +90,37 @@ function sortPlayers(players: Player[]) {
 }
 
 export default function Home() {
-  const [players, setPlayers] = useState<Player[]>(SAMPLE_PLAYERS);
-  const [courts, setCourts] = useState<Court[]>(SAMPLE_COURTS);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [courts, setCourts] = useState<Court[]>(() => createEmptyCourts());
   const [hydrated, setHydrated] = useState(false);
+  const [canPersist, setCanPersist] = useState(false);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('Alle');
   const [categoryFilter, setCategoryFilter] = useState('Alle');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<SelectedTarget | null>(null);
+  const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
   const [isPlayerDialogOpen, setPlayerDialogOpen] = useState(false);
+  const [isAnnouncementDialogOpen, setAnnouncementDialogOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [formName, setFormName] = useState('');
-  const [formAgeGroup, setFormAgeGroup] = useState('U13');
-  const [formCategory, setFormCategory] = useState('Jungen Einzel');
+  const [formAgeGroup, setFormAgeGroup] = useState<AgeGroup>('U13');
+  const [formCategory, setFormCategory] = useState<Category>('Jungen Einzel');
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<VoiceId>(DEFAULT_VOICE_ID);
+  const [selectedSpeedId, setSelectedSpeedId] = useState<SpeedId>(DEFAULT_SPEED_ID);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState('Lokale Stimme');
+  const [voiceStatus, setVoiceStatus] = useState('Stimme prüfen …');
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const ttsSessionRef = useRef<LocalTtsSession | null>(null);
+  const sessionVoiceRef = useRef<VoiceId | null>(null);
 
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
@@ -167,19 +171,41 @@ export default function Home() {
     );
   }, [visiblePlayers]);
 
+  const selectedVoice =
+    VOICE_OPTIONS.find((voice) => voice.id === selectedVoiceId) ?? VOICE_OPTIONS[0];
+  const interactionPlayerId = draggedPlayerId ?? selectedPlayerId;
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const savedPlayers =
+        const storedVoiceId = localStorage.getItem(VOICE_STORAGE_KEY);
+        const storedSpeedId = localStorage.getItem(SPEED_STORAGE_KEY);
+        if (isVoiceId(storedVoiceId)) setSelectedVoiceId(storedVoiceId);
+        if (isSpeedId(storedSpeedId)) setSelectedSpeedId(storedSpeedId);
+
+        const savedPlayersRaw =
           localStorage.getItem(PLAYER_STORAGE_KEY) ??
           localStorage.getItem(LEGACY_PLAYER_STORAGE_KEY);
-        const savedCourts =
+        const savedCourtsRaw =
           localStorage.getItem(COURT_STORAGE_KEY) ??
           localStorage.getItem(LEGACY_COURT_STORAGE_KEY);
-        if (savedPlayers) setPlayers(JSON.parse(savedPlayers) as Player[]);
-        if (savedCourts) setCourts(JSON.parse(savedCourts) as Court[]);
-      } catch {
-        setNotice('Gespeicherte Daten konnten nicht gelesen werden.');
+
+        const savedPlayers = savedPlayersRaw ? JSON.parse(savedPlayersRaw) : [];
+        const savedCourts = savedCourtsRaw
+          ? JSON.parse(savedCourtsRaw)
+          : createEmptyCourts();
+        const validated = validateTournamentState(savedPlayers, savedCourts);
+        if (!validated.ok) throw new Error(validated.error);
+
+        setPlayers(validated.value.players);
+        setCourts(validated.value.courts);
+        setCanPersist(true);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'Unbekannter Fehler';
+        setCanPersist(false);
+        setStorageWarning(
+          `Gespeicherte Turnierdaten sind beschädigt und wurden nicht überschrieben. ${detail}`,
+        );
       } finally {
         setHydrated(true);
       }
@@ -188,14 +214,29 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(players));
-  }, [hydrated, players]);
+    if (!hydrated || !canPersist) return;
+    try {
+      localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(players));
+      localStorage.setItem(COURT_STORAGE_KEY, JSON.stringify(courts));
+    } catch {
+      window.setTimeout(() => {
+        setCanPersist(false);
+        setStorageWarning(
+          'Turnierdaten konnten nicht lokal gespeichert werden. Bitte eine Sicherung erstellen.',
+        );
+      }, 0);
+    }
+  }, [canPersist, courts, hydrated, players]);
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(COURT_STORAGE_KEY, JSON.stringify(courts));
-  }, [courts, hydrated]);
+    try {
+      localStorage.setItem(VOICE_STORAGE_KEY, selectedVoiceId);
+      localStorage.setItem(SPEED_STORAGE_KEY, selectedSpeedId);
+    } catch {
+      // Tournament data remains usable even if these optional settings cannot be saved.
+    }
+  }, [hydrated, selectedSpeedId, selectedVoiceId]);
 
   useEffect(() => {
     if (!PWA_ENABLED) return;
@@ -234,13 +275,11 @@ export default function Home() {
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        searchRef.current?.focus();
-      }
       if (event.key === 'Escape') {
         setPlayerDialogOpen(false);
+        setAnnouncementDialogOpen(false);
         setSelectedPlayerId(null);
+        setSelectedTarget(null);
       }
     };
     window.addEventListener('keydown', handleShortcut);
@@ -253,19 +292,23 @@ export default function Home() {
       try {
         const tts = await import('@mintplex-labs/piper-tts-web');
         const storedVoices = await tts.stored();
-        if (!cancelled && storedVoices.includes(VOICE_ID)) {
-          setVoiceReady(true);
-          setVoiceStatus('Stimme bereit');
+        if (!cancelled) {
+          const stored = storedVoices.includes(selectedVoiceId);
+          setVoiceReady(stored);
+          setVoiceStatus(stored ? 'Stimme lokal verfügbar' : 'Download erforderlich');
         }
       } catch {
-        // The voice package is loaded on demand after the first user action.
+        if (!cancelled) {
+          setVoiceReady(false);
+          setVoiceStatus('Stimme wird bei Bedarf geladen');
+        }
       }
     }
     void checkVoice();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedVoiceId]);
 
   function showNotice(message: string) {
     setNotice(message);
@@ -332,59 +375,77 @@ export default function Home() {
     showNotice(`${editingPlayer.name} wurde gelöscht.`);
   }
 
-  function assignPlayer(playerId: string, courtId: number, slotIndex: 0 | 1) {
-    const player = playerById.get(playerId);
-    const targetCourt = courts.find((court) => court.id === courtId);
-    if (!player || !targetCourt) return;
-
-    const opponentId = targetCourt.players[slotIndex === 0 ? 1 : 0];
-    const opponent = opponentId ? playerById.get(opponentId) : null;
-    if (opponent && divisionOf(opponent) !== divisionOf(player)) {
-      showNotice(`${player.ageGroup} passt nicht zu ${divisionOf(opponent)}.`);
-      return;
-    }
-
-    const existingPlayerId = targetCourt.players[slotIndex];
-    if (existingPlayerId && existingPlayerId !== playerId) {
-      setPendingOverwrite({ playerId, courtId, slotIndex, existingPlayerId });
-      return;
-    }
-
-    commitAssignment(playerId, courtId, slotIndex);
-  }
-
-  function commitAssignment(playerId: string, courtId: number, slotIndex: 0 | 1) {
-
-    setCourts((current) =>
-      current.map((court) => {
-        const withoutPlayer = court.players.map((id) =>
-          id === playerId ? null : id,
-        ) as Court['players'];
-        if (court.id !== courtId) return { ...court, players: withoutPlayer };
-        const nextPlayers = [...withoutPlayer] as Court['players'];
-        nextPlayers[slotIndex] = playerId;
-        return { ...court, players: nextPlayers };
-      }),
-    );
+  function clearAssignmentSelection() {
     setSelectedPlayerId(null);
-    setPendingOverwrite(null);
+    setSelectedTarget(null);
   }
 
-  function handleSlotClick(courtId: number, slotIndex: 0 | 1) {
-    if (!selectedPlayerId) {
-      showNotice('Zuerst links einen Spieler auswählen.');
+  function assignPlayer(
+    playerId: string,
+    courtId: number,
+    slotIndex: SlotIndex,
+    allowOverwrite = false,
+  ) {
+    const result = assignPlayerToCourt(
+      players,
+      courts,
+      playerId,
+      courtId,
+      slotIndex,
+      allowOverwrite,
+    );
+
+    if (result.status === 'rejected') {
+      showNotice(result.message);
+      return result.status;
+    }
+    if (result.status === 'overwrite-required') {
+      setPendingOverwrite({
+        playerId,
+        courtId,
+        slotIndex,
+        existingPlayerId: result.existingPlayerId,
+      });
+      return result.status;
+    }
+    if (result.status === 'ready') setCourts(result.courts);
+
+    clearAssignmentSelection();
+    setPendingOverwrite(null);
+    return result.status;
+  }
+
+  function commitAssignment(playerId: string, courtId: number, slotIndex: SlotIndex) {
+    assignPlayer(playerId, courtId, slotIndex, true);
+  }
+
+  function handlePlayerSelection(playerId: string) {
+    if (selectedTarget) {
+      assignPlayer(playerId, selectedTarget.courtId, selectedTarget.slotIndex);
       return;
     }
-    assignPlayer(selectedPlayerId, courtId, slotIndex);
+    setSelectedTarget(null);
+    setSelectedPlayerId((current) => (current === playerId ? null : playerId));
   }
 
-  function handleDrop(event: ReactDragEvent, courtId: number, slotIndex: 0 | 1) {
+  function handleSlotClick(courtId: number, slotIndex: SlotIndex, occupied: boolean) {
+    if (selectedPlayerId) {
+      assignPlayer(selectedPlayerId, courtId, slotIndex);
+      return;
+    }
+    if (occupied) return;
+    setSelectedPlayerId(null);
+    setSelectedTarget({ courtId, slotIndex });
+  }
+
+  function handleDrop(event: ReactDragEvent, courtId: number, slotIndex: SlotIndex) {
     event.preventDefault();
     const playerId = event.dataTransfer.getData(PLAYER_DRAG_TYPE);
     if (playerId) assignPlayer(playerId, courtId, slotIndex);
+    setDraggedPlayerId(null);
   }
 
-  function removeFromCourt(courtId: number, slotIndex: 0 | 1) {
+  function removeFromCourt(courtId: number, slotIndex: SlotIndex) {
     setCourts((current) =>
       current.map((court) => {
         if (court.id !== courtId) return court;
@@ -393,17 +454,52 @@ export default function Home() {
         return { ...court, players: nextPlayers };
       }),
     );
+    setSelectedTarget((current) =>
+      current?.courtId === courtId && current.slotIndex === slotIndex ? null : current,
+    );
   }
 
-  async function prepareVoice() {
+  function stopCurrentAudio() {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.removeAttribute('src');
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }
+
+  function handleVoiceChange(voiceId: VoiceId) {
+    stopCurrentAudio();
+    ttsSessionRef.current = null;
+    sessionVoiceRef.current = null;
+    setVoiceBusy(false);
+    setVoiceReady(false);
+    setVoiceStatus('Stimme wird geprüft …');
+    setSelectedVoiceId(voiceId);
+  }
+
+  function handleSpeedChange(speedId: SpeedId) {
+    stopCurrentAudio();
+    setVoiceBusy(false);
+    setSelectedSpeedId(speedId);
+  }
+
+  async function prepareVoice(voiceId = selectedVoiceId) {
     if (voiceBusy) return false;
+    if (ttsSessionRef.current && sessionVoiceRef.current === voiceId) return true;
     setVoiceBusy(true);
     setVoiceStatus('Stimme wird geladen …');
     try {
       const tts = await import('@mintplex-labs/piper-tts-web');
       const storedVoices = await tts.stored();
-      if (!storedVoices.includes(VOICE_ID)) {
-        await tts.download(VOICE_ID, (progress) => {
+      if (!storedVoices.includes(voiceId)) {
+        await tts.download(voiceId, (progress) => {
           const percent = progress.total
             ? Math.round((progress.loaded / progress.total) * 100)
             : 0;
@@ -411,20 +507,67 @@ export default function Home() {
         });
       }
       setVoiceStatus('Stimme wird initialisiert …');
+      tts.TtsSession._instance = null;
       ttsSessionRef.current = await tts.TtsSession.create({
-        voiceId: VOICE_ID,
+        voiceId,
         wasmPaths: LOCAL_WASM_PATHS,
       });
+      sessionVoiceRef.current = voiceId;
       setVoiceReady(true);
       setVoiceStatus('Stimme bereit');
       return true;
     } catch (error) {
       console.error(error);
+      setVoiceReady(false);
       setVoiceStatus('Stimme nicht verfügbar');
       showNotice('Die lokale Stimme konnte nicht geladen werden. Internetverbindung prüfen und erneut versuchen.');
       return false;
     } finally {
       setVoiceBusy(false);
+    }
+  }
+
+  function finishAudio(audio: HTMLAudioElement, audioUrl: string) {
+    if (audioRef.current === audio) audioRef.current = null;
+    if (audioUrlRef.current === audioUrl) audioUrlRef.current = null;
+    URL.revokeObjectURL(audioUrl);
+    setVoiceStatus('Stimme bereit');
+    setVoiceBusy(false);
+  }
+
+  async function speakText(text: string, progressLabel: string) {
+    if (voiceBusy) return;
+    if (!ttsSessionRef.current || sessionVoiceRef.current !== selectedVoiceId) {
+      const prepared = await prepareVoice(selectedVoiceId);
+      if (!prepared) return;
+    }
+
+    setVoiceBusy(true);
+    setVoiceStatus(progressLabel);
+    try {
+      const session = ttsSessionRef.current;
+      if (!session || sessionVoiceRef.current !== selectedVoiceId) {
+        throw new Error('Piper session is not ready for the selected voice.');
+      }
+      const audioBlob = await session.predict(text);
+      stopCurrentAudio();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.playbackRate = speedRate(selectedSpeedId);
+      audioRef.current = audio;
+      audioUrlRef.current = audioUrl;
+      audio.onended = () => finishAudio(audio, audioUrl);
+      audio.onerror = () => {
+        finishAudio(audio, audioUrl);
+        showNotice('Die Ansage konnte nicht abgespielt werden.');
+      };
+      await audio.play();
+    } catch (error) {
+      console.error(error);
+      stopCurrentAudio();
+      setVoiceStatus('Stimme bereit');
+      setVoiceBusy(false);
+      showNotice('Die Ansage konnte nicht erzeugt werden.');
     }
   }
 
@@ -444,41 +587,74 @@ export default function Home() {
     const second = court.players[1] ? playerById.get(court.players[1]) : null;
     if (!first || !second || voiceBusy) return;
 
-    if (!voiceReady || !ttsSessionRef.current) {
-      const prepared = await prepareVoice();
-      if (!prepared) return;
-    }
-
     const text = `Es spielen auf Feld ${court.id}, ${divisionOf(first)}, ${first.name} gegen ${second.name}. Ich wiederhole: ${first.name} gegen ${second.name}, auf Feld ${court.id}.`;
-    setVoiceBusy(true);
-    setVoiceStatus(`Ansage für Feld ${court.id} …`);
+    await speakText(text, `Ansage für Feld ${court.id} …`);
+  }
+
+  function exportTournamentData() {
     try {
-      const session = ttsSessionRef.current;
-      if (!session) throw new Error('Piper session is not ready.');
-      const audioBlob = await session.predict(text);
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
-        setVoiceStatus('Stimme bereit');
-        setVoiceBusy(false);
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
-        setVoiceStatus('Stimme bereit');
-        setVoiceBusy(false);
-        showNotice('Die Ansage konnte nicht abgespielt werden.');
-      };
-      await audio.play();
+      const backup = createBackup(players, courts, {
+        voiceId: selectedVoiceId,
+        speedId: selectedSpeedId,
+      });
+      const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `rallycue-sicherung-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      showNotice('Turnierdaten wurden als JSON gesichert.');
     } catch (error) {
       console.error(error);
-      setVoiceStatus('Stimme bereit');
-      setVoiceBusy(false);
-      showNotice('Die Ansage konnte nicht erzeugt werden.');
+      showNotice('Die Turnierdaten konnten nicht gesichert werden.');
+    }
+  }
+
+  async function importTournamentData(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    try {
+      const result = parseBackup(await file.text());
+      if (!result.ok) {
+        showNotice(result.error);
+        return;
+      }
+
+      const hasCurrentData =
+        players.length > 0 || courts.some((court) => court.players.some(Boolean));
+      if (
+        hasCurrentData &&
+        !window.confirm(
+          'Die Sicherung ersetzt alle aktuellen Spieler und Feldbelegungen. Wirklich fortfahren?',
+        )
+      ) {
+        return;
+      }
+
+      stopCurrentAudio();
+      ttsSessionRef.current = null;
+      sessionVoiceRef.current = null;
+      setPlayers(result.value.players);
+      setCourts(result.value.courts);
+      if (result.value.settings) {
+        setSelectedVoiceId(result.value.settings.voiceId);
+        setSelectedSpeedId(result.value.settings.speedId);
+      }
+      setVoiceReady(false);
+      setVoiceStatus('Stimme wird geprüft …');
+      setStorageWarning(null);
+      setCanPersist(true);
+      clearAssignmentSelection();
+      showNotice('Die RallyCue-Sicherung wurde geladen.');
+    } catch (error) {
+      console.error(error);
+      showNotice('Die Sicherungsdatei konnte nicht gelesen werden.');
     }
   }
 
@@ -500,13 +676,12 @@ export default function Home() {
           )}
           <button
             className={`voice-status ${voiceReady ? 'ready' : ''}`}
-            disabled={voiceBusy}
-            onClick={() => void prepareVoice()}
+            onClick={() => setAnnouncementDialogOpen(true)}
             type="button"
           >
             <span aria-hidden="true" />
             {voiceStatus}
-            {!voiceReady && !voiceBusy && <strong>Vorbereiten</strong>}
+            <strong>Ansage</strong>
           </button>
         </div>
       </header>
@@ -524,13 +699,11 @@ export default function Home() {
           <label className="search-field">
             <span aria-hidden="true" className="search-icon" />
             <input
-              ref={searchRef}
               type="search"
               placeholder="Spieler suchen …"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <kbd>⌘ K</kbd>
           </label>
 
           <div className="filter-row" aria-label="Altersklasse filtern">
@@ -569,28 +742,40 @@ export default function Home() {
                 {groupPlayers.map((player) => {
                   const assignedCourt = assignmentByPlayer.get(player.id);
                   const selected = selectedPlayerId === player.id;
+                  const targetDecision = selectedTarget
+                    ? evaluateAssignment(
+                        players,
+                        courts,
+                        player.id,
+                        selectedTarget.courtId,
+                        selectedTarget.slotIndex,
+                      )
+                    : null;
+                  const targetInvalid = targetDecision?.status === 'rejected';
                   return (
                     <div
-                      className={`player-row ${selected ? 'selected' : ''} ${assignedCourt ? 'assigned' : ''}`}
+                      className={`player-row ${selected ? 'selected' : ''} ${assignedCourt ? 'assigned' : ''} ${selectedTarget ? (targetInvalid ? 'target-invalid' : 'target-valid') : ''}`}
                       draggable
                       key={player.id}
                       onDragStart={(event) => {
                         event.dataTransfer.setData(PLAYER_DRAG_TYPE, player.id);
                         event.dataTransfer.effectAllowed = 'move';
-                        setSelectedPlayerId(player.id);
+                        setDraggedPlayerId(player.id);
                       }}
+                      onDragEnd={() => setDraggedPlayerId(null)}
                     >
                       <div
                         className="player-select"
-                        onClick={() => setSelectedPlayerId((current) => current === player.id ? null : player.id)}
+                        onClick={() => handlePlayerSelection(player.id)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            setSelectedPlayerId((current) => current === player.id ? null : player.id);
+                            handlePlayerSelection(player.id);
                           }
                         }}
                         role="button"
                         tabIndex={0}
+                        title={targetInvalid && targetDecision.status === 'rejected' ? targetDecision.message : undefined}
                       >
                         <span className={`avatar avatar-${player.ageGroup === 'U13' ? 'mint' : 'lavender'}`}>{initials(player.name)}</span>
                         <span className="player-copy">
@@ -623,7 +808,32 @@ export default function Home() {
             <p>Spieler ziehen oder anklicken und einem Platz zuweisen</p>
           </div>
 
-          <div className={`court-selection-bar ${selectedPlayerId ? 'active' : ''}`} aria-live="polite">
+          <div className="tournament-tools">
+            <div>
+              <strong>Turnierdaten</strong>
+              <span>Lokale Sicherung für diesen Browser</span>
+            </div>
+            <div className="tournament-tool-actions">
+              <button onClick={exportTournamentData} type="button">Turnierdaten sichern</button>
+              <button onClick={() => backupInputRef.current?.click()} type="button">Sicherung laden</button>
+              <input
+                ref={backupInputRef}
+                accept="application/json,.json"
+                className="visually-hidden"
+                onChange={(event) => void importTournamentData(event)}
+                type="file"
+              />
+            </div>
+          </div>
+
+          {storageWarning && (
+            <div className="storage-warning" role="alert">
+              <strong>Lokale Speicherung pausiert</strong>
+              <span>{storageWarning}</span>
+            </div>
+          )}
+
+          <div className={`court-selection-bar ${selectedPlayerId || selectedTarget ? 'active' : ''}`} aria-live="polite">
             {selectedPlayerId ? (
               <>
                 <span className="selection-player-avatar">{initials(playerById.get(selectedPlayerId)?.name ?? '')}</span>
@@ -631,10 +841,19 @@ export default function Home() {
                   <strong>{playerById.get(selectedPlayerId)?.name}</strong>
                   Jetzt einen Platz auf einem Feld auswählen
                 </span>
-                <button onClick={() => setSelectedPlayerId(null)} type="button">Auswahl aufheben</button>
+                <button onClick={clearAssignmentSelection} type="button">Auswahl aufheben</button>
+              </>
+            ) : selectedTarget ? (
+              <>
+                <span className="selection-player-avatar">{selectedTarget.courtId}</span>
+                <span className="selection-copy">
+                  <strong>Feld {selectedTarget.courtId} · Spieler {selectedTarget.slotIndex + 1}</strong>
+                  Jetzt links einen passenden Spieler auswählen
+                </span>
+                <button onClick={clearAssignmentSelection} type="button">Auswahl aufheben</button>
               </>
             ) : (
-              <span className="selection-placeholder">Tipp: Eine Spielerkarte anklicken oder direkt auf ein Feld ziehen.</span>
+              <span className="selection-placeholder">Tipp: Spieler oder leeren Feldplatz zuerst auswählen – Drag-and-drop funktioniert weiterhin.</span>
             )}
           </div>
 
@@ -655,15 +874,31 @@ export default function Home() {
                   </div>
                   <div className="slots">
                     {[first, second].map((player, index) => {
-                      const slotIndex = index as 0 | 1;
+                      const slotIndex = index as SlotIndex;
+                      const assignmentDecision = interactionPlayerId
+                        ? evaluateAssignment(
+                            players,
+                            courts,
+                            interactionPlayerId,
+                            court.id,
+                            slotIndex,
+                          )
+                        : null;
+                      const invalidTarget = assignmentDecision?.status === 'rejected';
+                      const selectableTarget = Boolean(
+                        interactionPlayerId && assignmentDecision?.status !== 'rejected',
+                      );
+                      const targetSelected =
+                        selectedTarget?.courtId === court.id &&
+                        selectedTarget.slotIndex === slotIndex;
                       return (
                         <div key={slotIndex}>
                           <button
-                            className={`player-slot ${player ? 'filled' : 'empty'} ${selectedPlayerId ? 'selectable' : ''}`}
-                            onClick={() => handleSlotClick(court.id, slotIndex)}
+                            className={`player-slot ${player ? 'filled' : 'empty'} ${selectableTarget ? 'selectable' : ''} ${invalidTarget ? 'invalid-target' : ''} ${targetSelected ? 'target-selected' : ''}`}
+                            onClick={() => handleSlotClick(court.id, slotIndex, Boolean(player))}
                             onDragOver={(event) => {
                               event.preventDefault();
-                              event.dataTransfer.dropEffect = 'move';
+                              event.dataTransfer.dropEffect = invalidTarget ? 'none' : 'move';
                             }}
                             onDrop={(event) => handleDrop(event, court.id, slotIndex)}
                             type="button"
@@ -726,13 +961,13 @@ export default function Home() {
               <div className="form-grid">
                 <label className="form-field">
                   <span>Altersklasse</span>
-                  <select value={formAgeGroup} onChange={(event) => setFormAgeGroup(event.target.value)}>
+                  <select value={formAgeGroup} onChange={(event) => setFormAgeGroup(event.target.value as AgeGroup)}>
                     {AGE_GROUPS.map((ageGroup) => <option key={ageGroup}>{ageGroup}</option>)}
                   </select>
                 </label>
                 <label className="form-field">
                   <span>Disziplin</span>
-                  <select value={formCategory} onChange={(event) => setFormCategory(event.target.value)}>
+                  <select value={formCategory} onChange={(event) => setFormCategory(event.target.value as Category)}>
                     {CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                   </select>
                 </label>
@@ -743,6 +978,84 @@ export default function Home() {
                 <button className="save-button" type="submit">{editingPlayer ? 'Speichern' : 'Spieler anlegen'}</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {isAnnouncementDialogOpen && (
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setAnnouncementDialogOpen(false);
+        }}>
+          <section className="player-dialog announcement-dialog" role="dialog" aria-modal="true" aria-labelledby="announcement-dialog-title">
+            <div className="dialog-heading">
+              <div>
+                <p className="eyebrow">Lokale Sprachausgabe</p>
+                <h2 id="announcement-dialog-title">Ansage-Einstellungen</h2>
+              </div>
+              <button onClick={() => setAnnouncementDialogOpen(false)} type="button" aria-label="Dialog schließen">×</button>
+            </div>
+
+            <fieldset className="settings-group" disabled={voiceBusy}>
+              <legend>Stimme</legend>
+              <div className="voice-options">
+                {VOICE_OPTIONS.map((voice) => (
+                  <button
+                    className={selectedVoiceId === voice.id ? 'active' : ''}
+                    key={voice.id}
+                    onClick={() => handleVoiceChange(voice.id)}
+                    type="button"
+                  >
+                    <strong>{voice.label}</strong>
+                    <span>{voice.descriptor}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="settings-group" disabled={voiceBusy}>
+              <legend>Geschwindigkeit</legend>
+              <div className="speed-options">
+                {SPEED_OPTIONS.map((speed) => (
+                  <button
+                    className={selectedSpeedId === speed.id ? 'active' : ''}
+                    key={speed.id}
+                    onClick={() => handleSpeedChange(speed.id)}
+                    type="button"
+                  >
+                    <strong>{speed.label}</strong>
+                    <span>{speed.rate.toFixed(2)}x</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className={`settings-voice-state ${voiceReady ? 'ready' : ''}`}>
+              <span aria-hidden="true" />
+              <div>
+                <strong>{selectedVoice.label} · {selectedVoice.descriptor}</strong>
+                <small>{voiceStatus}. Nur diese Stimme wird bei Bedarf heruntergeladen.</small>
+              </div>
+            </div>
+
+            <div className="dialog-actions announcement-actions">
+              <button className="cancel-button" onClick={() => setAnnouncementDialogOpen(false)} type="button">Schließen</button>
+              <button
+                className="prepare-button"
+                disabled={voiceBusy}
+                onClick={() => void prepareVoice()}
+                type="button"
+              >
+                Stimme vorbereiten
+              </button>
+              <button
+                className="save-button"
+                disabled={voiceBusy}
+                onClick={() => void speakText(TEST_ANNOUNCEMENT, 'Testansage …')}
+                type="button"
+              >
+                Testansage abspielen
+              </button>
+            </div>
           </section>
         </div>
       )}
