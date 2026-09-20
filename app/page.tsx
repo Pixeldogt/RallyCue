@@ -73,6 +73,12 @@ type VoicePreparationOptions = {
   background: boolean;
 };
 
+type SpeechSynthesisTask = {
+  spokenText: string;
+  resolve: (audio: Blob) => void;
+  reject: (error: unknown) => void;
+};
+
 const PLAYER_STORAGE_KEY = 'rallycue.players.v1';
 const COURT_STORAGE_KEY = 'rallycue.courts.v1';
 const LEGACY_PLAYER_STORAGE_KEY = 'courtcall.players.v1';
@@ -91,6 +97,7 @@ const LOCAL_WASM_PATHS = {
 const TEST_ANNOUNCEMENT =
   'Testansage. Es spielen auf Feld vier Max Mustermann gegen Bernd Beispiel.';
 const VOICE_RETRY_DELAYS_MS = [50, 100, 200, 400, 800];
+const MAX_AUDIO_CACHE_ENTRIES = 24;
 
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -142,6 +149,12 @@ export default function Home() {
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('Stimme prüfen …');
+  const [preparedSpeechKeys, setPreparedSpeechKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [preparingSpeechKeys, setPreparingSpeechKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
@@ -150,6 +163,10 @@ export default function Home() {
   const ttsSessionRef = useRef<LocalTtsSession | null>(null);
   const sessionVoiceRef = useRef<VoiceId | null>(null);
   const voicePreparationRef = useRef<Promise<boolean> | null>(null);
+  const audioBlobCacheRef = useRef<Map<string, Blob>>(new Map());
+  const speechSynthesisQueueRef = useRef<SpeechSynthesisTask[]>([]);
+  const speechSynthesisRunningRef = useRef(false);
+  const pendingSpeechSynthesisRef = useRef<Map<string, Promise<Blob>>>(new Map());
 
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
@@ -205,6 +222,19 @@ export default function Home() {
     () => mergePronunciationDictionaries(customPronunciations),
     [customPronunciations],
   );
+  const courtAnnouncements = useMemo(() => {
+    const announcements = new Map<number, string>();
+    for (const court of courts) {
+      const first = court.players[0] ? playerById.get(court.players[0]) : null;
+      const second = court.players[1] ? playerById.get(court.players[1]) : null;
+      if (!first || !second || divisionOf(first) !== divisionOf(second)) continue;
+      announcements.set(
+        court.id,
+        `Es spielen auf Feld ${court.id}, ${divisionOf(first)}, ${first.name} gegen ${second.name}. Ich wiederhole: ${first.name} gegen ${second.name}, auf Feld ${court.id}.`,
+      );
+    }
+    return announcements;
+  }, [courts, playerById]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -686,6 +716,125 @@ export default function Home() {
     setVoiceBusy(false);
   }
 
+  function markSpeechPreparing(spokenText: string, preparing: boolean) {
+    setPreparingSpeechKeys((current) => {
+      const next = new Set(current);
+      if (preparing) next.add(spokenText);
+      else next.delete(spokenText);
+      return next;
+    });
+  }
+
+  function cacheSpeech(spokenText: string, audioBlob: Blob) {
+    const cache = audioBlobCacheRef.current;
+    cache.delete(spokenText);
+    cache.set(spokenText, audioBlob);
+    while (cache.size > MAX_AUDIO_CACHE_ENTRIES) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey === undefined) break;
+      cache.delete(oldestKey);
+      setPreparedSpeechKeys((current) => {
+        const next = new Set(current);
+        next.delete(oldestKey);
+        return next;
+      });
+    }
+    setPreparedSpeechKeys((current) => new Set(current).add(spokenText));
+  }
+
+  async function runSpeechSynthesisQueue() {
+    if (speechSynthesisRunningRef.current) return;
+    speechSynthesisRunningRef.current = true;
+    try {
+      while (speechSynthesisQueueRef.current.length > 0) {
+        const task = speechSynthesisQueueRef.current.shift();
+        if (!task) continue;
+        try {
+          const cached = audioBlobCacheRef.current.get(task.spokenText);
+          if (cached) {
+            task.resolve(cached);
+            continue;
+          }
+          const session = ttsSessionRef.current;
+          if (!session || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
+            throw new Error('Piper session is not ready for Thorsten.');
+          }
+          const audioBlob = await session.predict(task.spokenText);
+          cacheSpeech(task.spokenText, audioBlob);
+          task.resolve(audioBlob);
+        } catch (error) {
+          task.reject(error);
+        } finally {
+          pendingSpeechSynthesisRef.current.delete(task.spokenText);
+          markSpeechPreparing(task.spokenText, false);
+        }
+      }
+    } finally {
+      speechSynthesisRunningRef.current = false;
+      if (speechSynthesisQueueRef.current.length > 0) {
+        void runSpeechSynthesisQueue();
+      }
+    }
+  }
+
+  function synthesizeText(text: string, priority: 'interactive' | 'background') {
+    const spokenText = applyPronunciationDictionary(
+      text,
+      mergedPronunciationDictionary,
+    );
+    const cached = audioBlobCacheRef.current.get(spokenText);
+    if (cached) return Promise.resolve(cached);
+
+    const pending = pendingSpeechSynthesisRef.current.get(spokenText);
+    if (pending) {
+      if (priority === 'interactive') {
+        const taskIndex = speechSynthesisQueueRef.current.findIndex(
+          (task) => task.spokenText === spokenText,
+        );
+        if (taskIndex > 0) {
+          const [task] = speechSynthesisQueueRef.current.splice(taskIndex, 1);
+          speechSynthesisQueueRef.current.unshift(task);
+        }
+      }
+      return pending;
+    }
+
+    let resolveTask!: (audio: Blob) => void;
+    let rejectTask!: (error: unknown) => void;
+    const promise = new Promise<Blob>((resolve, reject) => {
+      resolveTask = resolve;
+      rejectTask = reject;
+    });
+    const task = { spokenText, resolve: resolveTask, reject: rejectTask };
+    if (priority === 'interactive') speechSynthesisQueueRef.current.unshift(task);
+    else speechSynthesisQueueRef.current.push(task);
+    pendingSpeechSynthesisRef.current.set(spokenText, promise);
+    markSpeechPreparing(spokenText, true);
+    void runSpeechSynthesisQueue();
+    return promise;
+  }
+
+  useEffect(() => {
+    if (!voiceReady || sessionVoiceRef.current !== DEFAULT_VOICE_ID) return;
+    let cancelled = false;
+    async function prepareCourtAnnouncements() {
+      for (const text of courtAnnouncements.values()) {
+        if (cancelled) return;
+        try {
+          await synthesizeText(text, 'background');
+        } catch (error) {
+          console.error('Begegnungsansage konnte nicht vorbereitet werden.', error);
+        }
+      }
+    }
+    void prepareCourtAnnouncements();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run only when a ready encounter, the active voice, or the dictionary changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courtAnnouncements, mergedPronunciationDictionary, voiceReady]);
+
   async function speakText(text: string, progressLabel: string) {
     if (voiceBusy) return;
     if (!ttsSessionRef.current || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
@@ -696,15 +845,7 @@ export default function Home() {
     setVoiceBusy(true);
     setVoiceStatus(progressLabel);
     try {
-      const session = ttsSessionRef.current;
-      if (!session || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
-        throw new Error('Piper session is not ready for Thorsten.');
-      }
-      const spokenText = applyPronunciationDictionary(
-        text,
-        mergedPronunciationDictionary,
-      );
-      const audioBlob = await session.predict(spokenText);
+      const audioBlob = await synthesizeText(text, 'interactive');
       stopCurrentAudio();
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
@@ -738,11 +879,8 @@ export default function Home() {
   }
 
   async function announceCourt(court: Court) {
-    const first = court.players[0] ? playerById.get(court.players[0]) : null;
-    const second = court.players[1] ? playerById.get(court.players[1]) : null;
-    if (!first || !second || voiceBusy) return;
-
-    const text = `Es spielen auf Feld ${court.id}, ${divisionOf(first)}, ${first.name} gegen ${second.name}. Ich wiederhole: ${first.name} gegen ${second.name}, auf Feld ${court.id}.`;
+    const text = courtAnnouncements.get(court.id);
+    if (!text || voiceBusy) return;
     await speakText(text, `Ansage für Feld ${court.id} …`);
   }
 
@@ -1020,6 +1158,16 @@ export default function Home() {
               const second = court.players[1] ? playerById.get(court.players[1]) : null;
               const ready = Boolean(first && second && divisionOf(first) === divisionOf(second));
               const group = first ? divisionOf(first) : second ? divisionOf(second) : null;
+              const announcementText = courtAnnouncements.get(court.id);
+              const spokenAnnouncement = announcementText
+                ? applyPronunciationDictionary(announcementText, mergedPronunciationDictionary)
+                : null;
+              const announcementPrepared = Boolean(
+                spokenAnnouncement && preparedSpeechKeys.has(spokenAnnouncement),
+              );
+              const announcementPreparing = Boolean(
+                spokenAnnouncement && preparingSpeechKeys.has(spokenAnnouncement),
+              );
               return (
                 <article className={`court-card ${ready ? 'ready' : ''}`} key={court.id}>
                   <div className="court-card-head">
@@ -1094,13 +1242,19 @@ export default function Home() {
                     })}
                   </div>
                   <button
-                    className="announce-button"
+                    className={`announce-button ${announcementPrepared ? 'prepared' : ''}`}
                     disabled={!ready || voiceBusy}
                     onClick={() => void announceCourt(court)}
                     type="button"
                   >
                     <span aria-hidden="true" className="speaker-glyph">◖))</span>
-                    {ready ? 'Begegnung aufrufen' : 'Zwei passende Spieler zuweisen'}
+                    {!ready
+                      ? 'Zwei passende Spieler zuweisen'
+                      : announcementPrepared
+                        ? 'Begegnung aufrufen'
+                        : announcementPreparing
+                          ? 'Ansage wird vorbereitet …'
+                          : 'Begegnung aufrufen'}
                   </button>
                 </article>
               );
