@@ -6,6 +6,8 @@ import {
   DEFAULT_VOICE_ID,
   EMPTY_AGE_GROUP,
   LEGACY_VOICE_IDS,
+  THORSTEN_EMOTIONAL_SPEAKER,
+  THORSTEN_EMOTIONAL_SPEAKER_ID,
   assignPlayerToCourt,
   clearCourt,
   createBackup,
@@ -94,8 +96,11 @@ test('Feld leeren entfernt beide Slots und lässt andere Felder unverändert', (
   assert.equal(result[1].players[0], nora.id);
 });
 
-test('Thorsten High ist die feste RallyCue-Stimme', () => {
-  assert.equal(DEFAULT_VOICE_ID, 'de_DE-thorsten-high');
+test('Thorsten Emotional neutral ist die feste RallyCue-Stimme', () => {
+  assert.equal(DEFAULT_VOICE_ID, 'de_DE-thorsten_emotional-medium');
+  assert.equal(THORSTEN_EMOTIONAL_SPEAKER_ID, 4);
+  assert.deepEqual(THORSTEN_EMOTIONAL_SPEAKER, { id: 4, label: 'neutral' });
+  assert.equal(migrateVoiceId(DEFAULT_VOICE_ID), DEFAULT_VOICE_ID);
   for (const voiceId of LEGACY_VOICE_IDS) {
     assert.equal(migrateVoiceId(voiceId), DEFAULT_VOICE_ID);
   }
@@ -183,7 +188,7 @@ test('ein Backup mit ungültigem Aussprachewörterbuch wird vollständig abgeleh
 });
 
 for (const legacyVoiceId of LEGACY_VOICE_IDS) {
-  const sourceVersion = legacyVoiceId === 'de_DE-thorsten_emotional-medium' ? '0.1.3' : '0.1.2';
+  const sourceVersion = legacyVoiceId === 'de_DE-thorsten-high' ? '0.1.6' : '0.1.2';
   test(`${sourceVersion}-Backup mit ${legacyVoiceId} bleibt kompatibel`, () => {
     const result = parseBackup({
       format: 'rallycue-backup',

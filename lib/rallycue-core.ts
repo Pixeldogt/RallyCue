@@ -7,13 +7,20 @@ export const AGE_GROUPS = ['U9', 'U11', 'U13', 'U15', 'U17', 'U19'] as const;
 export const CATEGORIES = ['Jungen Einzel', 'Mädchen Einzel'] as const;
 
 export const FIXED_VOICE = {
-  id: 'de_DE-thorsten-high',
+  id: 'de_DE-thorsten_emotional-medium',
   label: 'Thorsten',
 } as const;
 
+export const THORSTEN_EMOTIONAL_SPEAKER_ID = 4;
+
+export const THORSTEN_EMOTIONAL_SPEAKER = {
+  id: THORSTEN_EMOTIONAL_SPEAKER_ID,
+  label: 'neutral',
+} as const;
+
 export const LEGACY_VOICE_IDS = [
+  'de_DE-thorsten-high',
   'de_DE-thorsten-medium',
-  'de_DE-thorsten_emotional-medium',
   'de_DE-karlsson-low',
   'de_DE-kerstin-low',
   'de_DE-ramona-low',
