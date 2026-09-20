@@ -9,7 +9,7 @@ RallyCue unterstützt Badmintonturniere bei der Feldbelegung und bei automatisch
 - Spieler per Drag-and-drop oder in beiden Klickrichtungen einem Feld zuweisen
 - Sicherheitsabfrage vor dem Überschreiben einer Belegung
 - Belegte Felder nach Bestätigung vollständig leeren
-- Feste Piper-Stimme „Thorsten Emotional“ mit drei Geschwindigkeiten und Testansage
+- Feste Piper-Stimme „Thorsten“ mit drei Geschwindigkeiten und Testansage
 - Lokale Speicherung der Turnierdaten im Browser
 - Lokale JSON-Sicherung und Wiederherstellung der Turnierdaten
 

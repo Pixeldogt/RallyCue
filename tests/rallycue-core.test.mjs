@@ -94,8 +94,8 @@ test('Feld leeren entfernt beide Slots und lässt andere Felder unverändert', (
   assert.equal(result[1].players[0], nora.id);
 });
 
-test('Thorsten Emotional ist die feste RallyCue-Stimme', () => {
-  assert.equal(DEFAULT_VOICE_ID, 'de_DE-thorsten_emotional-medium');
+test('Thorsten High ist die feste RallyCue-Stimme', () => {
+  assert.equal(DEFAULT_VOICE_ID, 'de_DE-thorsten-high');
   for (const voiceId of LEGACY_VOICE_IDS) {
     assert.equal(migrateVoiceId(voiceId), DEFAULT_VOICE_ID);
   }
@@ -132,7 +132,8 @@ test('Backup-Export und -Import erhalten Spieler und Felder', () => {
 });
 
 for (const legacyVoiceId of LEGACY_VOICE_IDS) {
-  test(`0.1.2-Backup mit ${legacyVoiceId} bleibt kompatibel`, () => {
+  const sourceVersion = legacyVoiceId === 'de_DE-thorsten_emotional-medium' ? '0.1.3' : '0.1.2';
+  test(`${sourceVersion}-Backup mit ${legacyVoiceId} bleibt kompatibel`, () => {
     const result = parseBackup({
       format: 'rallycue-backup',
       version: 1,

@@ -207,7 +207,7 @@ button { color: inherit; }
 .court-number { display: grid; width: 33px; height: 33px; place-items: center; border-radius: 11px; background: var(--primary); color: white; font-size: 14px; font-weight: 740; }
 .court-card-actions { justify-content: flex-end; flex-wrap: wrap; gap: 6px !important; }
 .group-badge { padding: 6px 9px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: 10px; font-weight: 730; }
-.clear-court-button { padding: 6px 10px; border: 1px solid rgba(156, 49, 86, .16); border-radius: 999px; background: #f8e9ed; color: #88435a; cursor: pointer; font-size: 9px; font-weight: 730; }
+.clear-court-button { padding: 6px 10px; border: 1px solid rgba(156, 49, 86, .16); border-radius: 999px; background: #f8e9ed; color: #88435a; cursor: pointer; font-size: 10px; font-weight: 730; }
 .clear-court-button:hover { background: #f2dce2; }
 .slots { position: relative; margin: 15px 0 14px; }
 .slots > div { position: relative; }
@@ -266,6 +266,7 @@ button { color: inherit; }
 .announcement-actions { justify-content: flex-end; flex-wrap: wrap; }
 .confirm-dialog { width: min(500px, 100%); text-align: center; }
 .warning-mark { display: grid; width: 48px; height: 48px; margin: 0 auto 14px; place-items: center; border-radius: 17px; background: #fff0d9; color: #925b08; font-size: 24px; font-weight: 800; }
+.clear-warning-mark { background: #f8e9ed; color: #88435a; }
 .confirm-dialog h2 { margin: 0; font-size: 24px; letter-spacing: -.65px; }
 .confirm-copy { max-width: 390px; margin: 9px auto 20px; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .overwrite-summary { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 11px; padding: 14px; border-radius: 17px; background: var(--surface-low); text-align: left; }
@@ -273,6 +274,8 @@ button { color: inherit; }
 .overwrite-summary > div > span { color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .overwrite-summary strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .overwrite-arrow { color: var(--primary); font-size: 20px; }
+.clear-confirm-button { border: 1px solid rgba(156, 49, 86, .16); background: #f8e9ed; color: #88435a; }
+.clear-confirm-button:hover { background: #f2dce2; }
 .confirm-actions { justify-content: flex-end; }
 .overwrite-button { border: 0; background: #9c3156; color: white; }
 .toast { position: fixed; z-index: 80; right: 28px; bottom: 28px; max-width: 420px; padding: 13px 17px; border-radius: 15px; background: #29242f; color: white; box-shadow: 0 15px 40px rgba(24, 19, 29, .25); font-size: 12px; font-weight: 620; }

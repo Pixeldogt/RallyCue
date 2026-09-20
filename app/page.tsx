@@ -115,6 +115,7 @@ export default function Home() {
   const [formCategory, setFormCategory] = useState<Category>('Jungen Einzel');
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
+  const [pendingClearCourtId, setPendingClearCourtId] = useState<number | null>(null);
   const [selectedSpeedId, setSelectedSpeedId] = useState<SpeedId>(DEFAULT_SPEED_ID);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
@@ -281,6 +282,7 @@ export default function Home() {
         setAnnouncementDialogOpen(false);
         setSelectedPlayerId(null);
         setSelectedTarget(null);
+        setPendingClearCourtId(null);
       }
     };
     window.addEventListener('keydown', handleShortcut);
@@ -464,11 +466,13 @@ export default function Home() {
     );
   }
 
-  function clearCourtAssignments(courtId: number) {
-    if (!window.confirm(`Feld ${courtId} wirklich leeren?`)) return;
+  function confirmClearCourt() {
+    if (pendingClearCourtId === null) return;
+    const courtId = pendingClearCourtId;
     setCourts((current) => clearCourt(current, courtId));
     setSelectedTarget((current) => (current?.courtId === courtId ? null : current));
     setPendingOverwrite((current) => (current?.courtId === courtId ? null : current));
+    setPendingClearCourtId(null);
     showNotice(`Feld ${courtId} wurde geleert.`);
   }
 
@@ -500,7 +504,7 @@ export default function Home() {
       if ((await tts.stored()).includes(DEFAULT_VOICE_ID)) return;
       const delay = VOICE_RETRY_DELAYS_MS[attempt];
       if (delay === undefined) {
-        throw new Error('Thorsten Emotional ist nach dem Download nicht im OPFS verfügbar.');
+        throw new Error('Thorsten ist nach dem Download nicht im OPFS verfügbar.');
       }
       await wait(delay);
     }
@@ -557,7 +561,7 @@ export default function Home() {
       setVoiceStatus('Stimme bereit');
       return true;
     } catch (error) {
-      console.error(`Thorsten Emotional konnte in Phase "${phase}" nicht vorbereitet werden.`, error);
+      console.error(`Thorsten konnte in Phase "${phase}" nicht vorbereitet werden.`, error);
       ttsSessionRef.current = null;
       sessionVoiceRef.current = null;
       setVoiceReady(false);
@@ -593,7 +597,7 @@ export default function Home() {
     try {
       const session = ttsSessionRef.current;
       if (!session || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
-        throw new Error('Piper session is not ready for Thorsten Emotional.');
+        throw new Error('Piper session is not ready for Thorsten.');
       }
       const audioBlob = await session.predict(text);
       stopCurrentAudio();
@@ -920,7 +924,7 @@ export default function Home() {
                       {court.players.some(Boolean) && (
                         <button
                           className="clear-court-button"
-                          onClick={() => clearCourtAssignments(court.id)}
+                          onClick={() => setPendingClearCourtId(court.id)}
                           type="button"
                         >
                           Feld leeren
@@ -1149,6 +1153,32 @@ export default function Home() {
           </div>
         );
       })()}
+
+      {pendingClearCourtId !== null && (
+        <div className="dialog-backdrop" role="presentation">
+          <section
+            className="player-dialog confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="clear-court-dialog-title"
+          >
+            <span className="warning-mark clear-warning-mark" aria-hidden="true">!</span>
+            <p className="eyebrow">Sicherheitsabfrage</p>
+            <h2 id="clear-court-dialog-title">Feld {pendingClearCourtId} leeren?</h2>
+            <p className="confirm-copy">
+              Alle Spieler werden von diesem Feld entfernt. Die Spieler bleiben in der Teilnehmerliste.
+            </p>
+            <div className="dialog-actions confirm-actions">
+              <button className="cancel-button" onClick={() => setPendingClearCourtId(null)} type="button">
+                Abbrechen
+              </button>
+              <button className="clear-confirm-button" onClick={confirmClearCourt} type="button">
+                Feld leeren
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {notice && <div className="toast" role="status">{notice}</div>}
     </main>
