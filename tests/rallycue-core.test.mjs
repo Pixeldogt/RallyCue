@@ -3,9 +3,16 @@ import test from 'node:test';
 
 import {
   AGE_GROUPS,
+  DEFAULT_VOICE_ID,
+  EMPTY_AGE_GROUP,
+  LEGACY_VOICE_IDS,
   assignPlayerToCourt,
+  clearCourt,
   createBackup,
   createEmptyCourts,
+  divisionOf,
+  isPlayerDraftValid,
+  migrateVoiceId,
   parseBackup,
 } from '../lib/rallycue-core.ts';
 
@@ -39,6 +46,12 @@ test('U9 ist eine gültige Altersklasse', () => {
   assert.equal(AGE_GROUPS.includes('U9'), true);
 });
 
+test('ein neuer Spieler benötigt eine echte Altersklassenauswahl', () => {
+  assert.equal(EMPTY_AGE_GROUP, '');
+  assert.equal(isPlayerDraftValid('Max Mustermann', EMPTY_AGE_GROUP, 'Jungen Einzel'), false);
+  assert.equal(isPlayerDraftValid('Max Mustermann', 'U13', 'Jungen Einzel'), true);
+});
+
 test('ein Spieler kann nicht auf den anderen Slot desselben Feldes wechseln', () => {
   const courts = withCourt(1, max.id, bernd.id);
   const result = assignPlayerToCourt(players, courts, max.id, 1, 1);
@@ -66,6 +79,28 @@ test('Spieler unterschiedlicher Division werden abgelehnt', () => {
   assert.deepEqual(result.courts, courts);
 });
 
+test('Jungen und Mädchen derselben Altersklasse bleiben getrennte Divisionen', () => {
+  assert.notEqual(divisionOf(max), divisionOf(nora));
+});
+
+test('Feld leeren entfernt beide Slots und lässt andere Felder unverändert', () => {
+  const courts = withCourt(1, max.id, bernd.id);
+  courts[1].players[0] = nora.id;
+  const otherCourtBefore = courts[1];
+  const result = clearCourt(courts, 1);
+
+  assert.deepEqual(result[0].players, [null, null]);
+  assert.equal(result[1], otherCourtBefore);
+  assert.equal(result[1].players[0], nora.id);
+});
+
+test('Thorsten Emotional ist die feste RallyCue-Stimme', () => {
+  assert.equal(DEFAULT_VOICE_ID, 'de_DE-thorsten_emotional-medium');
+  for (const voiceId of LEGACY_VOICE_IDS) {
+    assert.equal(migrateVoiceId(voiceId), DEFAULT_VOICE_ID);
+  }
+});
+
 test('ein belegter Zielslot benötigt weiterhin eine Bestätigung', () => {
   const courts = withCourt(1, max.id, bernd.id);
   const move = assignPlayerToCourt(players, courts, nora.id, 2, 0);
@@ -82,7 +117,7 @@ test('Backup-Export und -Import erhalten Spieler und Felder', () => {
   const backup = createBackup(
     players,
     courts,
-    { voiceId: 'de_DE-karlsson-low', speedId: 'fast' },
+    { voiceId: DEFAULT_VOICE_ID, speedId: 'fast' },
     '2026-09-20T12:00:00.000Z',
   );
   const result = parseBackup(JSON.stringify(backup));
@@ -91,10 +126,29 @@ test('Backup-Export und -Import erhalten Spieler und Felder', () => {
   assert.deepEqual(result.value.players, players);
   assert.deepEqual(result.value.courts, courts);
   assert.deepEqual(result.value.settings, {
-    voiceId: 'de_DE-karlsson-low',
+    voiceId: DEFAULT_VOICE_ID,
     speedId: 'fast',
   });
 });
+
+for (const legacyVoiceId of LEGACY_VOICE_IDS) {
+  test(`0.1.2-Backup mit ${legacyVoiceId} bleibt kompatibel`, () => {
+    const result = parseBackup({
+      format: 'rallycue-backup',
+      version: 1,
+      exportedAt: '2026-09-20T12:00:00.000Z',
+      players,
+      courts: withCourt(1, max.id, bernd.id),
+      settings: { voiceId: legacyVoiceId, speedId: 'slow' },
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.value.settings, {
+      voiceId: DEFAULT_VOICE_ID,
+      speedId: 'slow',
+    });
+  });
+}
 
 test('ein ungültiges Backup verändert vorhandene Daten nicht', () => {
   const courts = withCourt(1, max.id, bernd.id);

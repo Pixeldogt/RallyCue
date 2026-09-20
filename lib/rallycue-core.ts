@@ -1,11 +1,16 @@
 export const AGE_GROUPS = ['U9', 'U11', 'U13', 'U15', 'U17', 'U19'] as const;
 export const CATEGORIES = ['Jungen Einzel', 'Mädchen Einzel'] as const;
 
-export const VOICE_OPTIONS = [
-  { id: 'de_DE-thorsten-medium', label: 'Thorsten', descriptor: 'männlich' },
-  { id: 'de_DE-karlsson-low', label: 'Karlsson', descriptor: 'männlich' },
-  { id: 'de_DE-kerstin-low', label: 'Kerstin', descriptor: 'weiblich' },
-  { id: 'de_DE-ramona-low', label: 'Ramona', descriptor: 'weiblich' },
+export const FIXED_VOICE = {
+  id: 'de_DE-thorsten_emotional-medium',
+  label: 'Thorsten Emotional',
+} as const;
+
+export const LEGACY_VOICE_IDS = [
+  'de_DE-thorsten-medium',
+  'de_DE-karlsson-low',
+  'de_DE-kerstin-low',
+  'de_DE-ramona-low',
 ] as const;
 
 export const SPEED_OPTIONS = [
@@ -14,12 +19,13 @@ export const SPEED_OPTIONS = [
   { id: 'fast', label: 'Schnell', rate: 1.15 },
 ] as const;
 
-export const DEFAULT_VOICE_ID = VOICE_OPTIONS[0].id;
+export const DEFAULT_VOICE_ID = FIXED_VOICE.id;
 export const DEFAULT_SPEED_ID = SPEED_OPTIONS[1].id;
+export const EMPTY_AGE_GROUP = '' as const;
 
 export type AgeGroup = (typeof AGE_GROUPS)[number];
 export type Category = (typeof CATEGORIES)[number];
-export type VoiceId = (typeof VOICE_OPTIONS)[number]['id'];
+export type VoiceId = typeof DEFAULT_VOICE_ID;
 export type SpeedId = (typeof SPEED_OPTIONS)[number]['id'];
 export type SlotIndex = 0 | 1;
 
@@ -87,7 +93,18 @@ export function isCategory(value: unknown): value is Category {
 }
 
 export function isVoiceId(value: unknown): value is VoiceId {
-  return typeof value === 'string' && VOICE_OPTIONS.some((voice) => voice.id === value);
+  return value === DEFAULT_VOICE_ID;
+}
+
+export function migrateVoiceId(value: unknown): VoiceId | null {
+  if (isVoiceId(value)) return value;
+  if (
+    typeof value === 'string' &&
+    LEGACY_VOICE_IDS.includes(value as (typeof LEGACY_VOICE_IDS)[number])
+  ) {
+    return DEFAULT_VOICE_ID;
+  }
+  return null;
 }
 
 export function isSpeedId(value: unknown): value is SpeedId {
@@ -100,6 +117,25 @@ export function divisionOf(player: Player) {
 
 export function speedRate(speedId: SpeedId) {
   return SPEED_OPTIONS.find((speed) => speed.id === speedId)?.rate ?? 1;
+}
+
+export function isPlayerDraftValid(
+  name: unknown,
+  ageGroup: unknown,
+  category: unknown,
+) {
+  return (
+    typeof name === 'string' &&
+    Boolean(name.trim()) &&
+    isAgeGroup(ageGroup) &&
+    isCategory(category)
+  );
+}
+
+export function clearCourt(courts: Court[], courtId: number): Court[] {
+  return courts.map((court) =>
+    court.id === courtId ? { ...court, players: [null, null] } : court,
+  );
 }
 
 export function evaluateAssignment(
@@ -309,13 +345,18 @@ export function createBackup(
   const state = validateTournamentState(players, courts);
   if (!state.ok) throw new Error(state.error);
 
+  const voiceId = settings ? migrateVoiceId(settings.voiceId) : null;
+  if (settings && (!voiceId || !isSpeedId(settings.speedId))) {
+    throw new Error('Die Ansage-Einstellungen sind ungültig.');
+  }
+
   return {
     format: 'rallycue-backup',
     version: 1,
     exportedAt,
     players: state.value.players,
     courts: state.value.courts,
-    ...(settings ? { settings: { ...settings } } : {}),
+    ...(settings ? { settings: { voiceId: voiceId!, speedId: settings.speedId } } : {}),
   };
 }
 
@@ -341,15 +382,18 @@ export function parseBackup(input: unknown): BackupValidationResult {
 
   let settings: RallyCueSettings | undefined;
   if (parsed.settings !== undefined) {
+    const voiceId = isRecord(parsed.settings)
+      ? migrateVoiceId(parsed.settings.voiceId)
+      : null;
     if (
       !isRecord(parsed.settings) ||
-      !isVoiceId(parsed.settings.voiceId) ||
+      !voiceId ||
       !isSpeedId(parsed.settings.speedId)
     ) {
       return { ok: false, error: 'Die Ansage-Einstellungen der Sicherung sind ungültig.' };
     }
     settings = {
-      voiceId: parsed.settings.voiceId,
+      voiceId,
       speedId: parsed.settings.speedId,
     };
   }

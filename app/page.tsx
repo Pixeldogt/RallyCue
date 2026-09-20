@@ -15,15 +15,17 @@ import {
   CATEGORIES,
   DEFAULT_SPEED_ID,
   DEFAULT_VOICE_ID,
+  EMPTY_AGE_GROUP,
+  FIXED_VOICE,
   SPEED_OPTIONS,
-  VOICE_OPTIONS,
   assignPlayerToCourt,
+  clearCourt,
   createBackup,
   createEmptyCourts,
   divisionOf,
   evaluateAssignment,
+  isPlayerDraftValid,
   isSpeedId,
-  isVoiceId,
   parseBackup,
   speedRate,
   validateTournamentState,
@@ -73,6 +75,10 @@ const LOCAL_WASM_PATHS = {
 };
 const TEST_ANNOUNCEMENT =
   'Testansage. Es spielen auf Feld vier Max Mustermann gegen Bernd Beispiel.';
+const VOICE_RETRY_DELAYS_MS = [50, 100, 200, 400, 800];
+
+const wait = (milliseconds: number) =>
+  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 function initials(name: string) {
   return name
@@ -105,11 +111,10 @@ export default function Home() {
   const [isAnnouncementDialogOpen, setAnnouncementDialogOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [formName, setFormName] = useState('');
-  const [formAgeGroup, setFormAgeGroup] = useState<AgeGroup>('U13');
+  const [formAgeGroup, setFormAgeGroup] = useState<AgeGroup | ''>(EMPTY_AGE_GROUP);
   const [formCategory, setFormCategory] = useState<Category>('Jungen Einzel');
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
-  const [selectedVoiceId, setSelectedVoiceId] = useState<VoiceId>(DEFAULT_VOICE_ID);
   const [selectedSpeedId, setSelectedSpeedId] = useState<SpeedId>(DEFAULT_SPEED_ID);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
@@ -171,16 +176,12 @@ export default function Home() {
     );
   }, [visiblePlayers]);
 
-  const selectedVoice =
-    VOICE_OPTIONS.find((voice) => voice.id === selectedVoiceId) ?? VOICE_OPTIONS[0];
   const interactionPlayerId = draggedPlayerId ?? selectedPlayerId;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const storedVoiceId = localStorage.getItem(VOICE_STORAGE_KEY);
         const storedSpeedId = localStorage.getItem(SPEED_STORAGE_KEY);
-        if (isVoiceId(storedVoiceId)) setSelectedVoiceId(storedVoiceId);
         if (isSpeedId(storedSpeedId)) setSelectedSpeedId(storedSpeedId);
 
         const savedPlayersRaw =
@@ -231,12 +232,12 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      localStorage.setItem(VOICE_STORAGE_KEY, selectedVoiceId);
+      localStorage.setItem(VOICE_STORAGE_KEY, DEFAULT_VOICE_ID);
       localStorage.setItem(SPEED_STORAGE_KEY, selectedSpeedId);
     } catch {
       // Tournament data remains usable even if these optional settings cannot be saved.
     }
-  }, [hydrated, selectedSpeedId, selectedVoiceId]);
+  }, [hydrated, selectedSpeedId]);
 
   useEffect(() => {
     if (!PWA_ENABLED) return;
@@ -293,8 +294,8 @@ export default function Home() {
         const tts = await import('@mintplex-labs/piper-tts-web');
         const storedVoices = await tts.stored();
         if (!cancelled) {
-          const stored = storedVoices.includes(selectedVoiceId);
-          setVoiceReady(stored);
+          const stored = storedVoices.includes(DEFAULT_VOICE_ID);
+          setVoiceReady(false);
           setVoiceStatus(stored ? 'Stimme lokal verfügbar' : 'Download erforderlich');
         }
       } catch {
@@ -308,7 +309,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [selectedVoiceId]);
+  }, []);
 
   function showNotice(message: string) {
     setNotice(message);
@@ -318,7 +319,7 @@ export default function Home() {
   function openNewPlayerDialog() {
     setEditingPlayer(null);
     setFormName('');
-    setFormAgeGroup('U13');
+    setFormAgeGroup(EMPTY_AGE_GROUP);
     setFormCategory('Jungen Einzel');
     setPlayerDialogOpen(true);
   }
@@ -334,13 +335,17 @@ export default function Home() {
   function savePlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = formName.trim().replace(/\s+/g, ' ');
-    if (!name) return;
+    if (!isPlayerDraftValid(name, formAgeGroup, formCategory)) {
+      showNotice('Bitte Name, Altersklasse und Disziplin vollständig auswählen.');
+      return;
+    }
+    const ageGroup = formAgeGroup as AgeGroup;
 
     if (editingPlayer) {
       setPlayers((current) =>
         current.map((player) =>
           player.id === editingPlayer.id
-            ? { ...player, name, ageGroup: formAgeGroup, category: formCategory }
+            ? { ...player, name, ageGroup, category: formCategory }
             : player,
         ),
       );
@@ -349,7 +354,7 @@ export default function Home() {
       const player: Player = {
         id: crypto.randomUUID(),
         name,
-        ageGroup: formAgeGroup,
+        ageGroup,
         category: formCategory,
       };
       setPlayers((current) => sortPlayers([...current, player]));
@@ -459,6 +464,14 @@ export default function Home() {
     );
   }
 
+  function clearCourtAssignments(courtId: number) {
+    if (!window.confirm(`Feld ${courtId} wirklich leeren?`)) return;
+    setCourts((current) => clearCourt(current, courtId));
+    setSelectedTarget((current) => (current?.courtId === courtId ? null : current));
+    setPendingOverwrite((current) => (current?.courtId === courtId ? null : current));
+    showNotice(`Feld ${courtId} wurde geleert.`);
+  }
+
   function stopCurrentAudio() {
     const audio = audioRef.current;
     if (audio) {
@@ -474,53 +487,86 @@ export default function Home() {
     }
   }
 
-  function handleVoiceChange(voiceId: VoiceId) {
-    stopCurrentAudio();
-    ttsSessionRef.current = null;
-    sessionVoiceRef.current = null;
-    setVoiceBusy(false);
-    setVoiceReady(false);
-    setVoiceStatus('Stimme wird geprüft …');
-    setSelectedVoiceId(voiceId);
-  }
-
   function handleSpeedChange(speedId: SpeedId) {
     stopCurrentAudio();
     setVoiceBusy(false);
     setSelectedSpeedId(speedId);
   }
 
-  async function prepareVoice(voiceId = selectedVoiceId) {
+  async function waitForStoredVoice(
+    tts: typeof import('@mintplex-labs/piper-tts-web'),
+  ) {
+    for (let attempt = 0; ; attempt += 1) {
+      if ((await tts.stored()).includes(DEFAULT_VOICE_ID)) return;
+      const delay = VOICE_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        throw new Error('Thorsten Emotional ist nach dem Download nicht im OPFS verfügbar.');
+      }
+      await wait(delay);
+    }
+  }
+
+  async function createVoiceSession(
+    tts: typeof import('@mintplex-labs/piper-tts-web'),
+    retryAfterDownload: boolean,
+  ) {
+    const retryDelays = retryAfterDownload ? VOICE_RETRY_DELAYS_MS : [];
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        tts.TtsSession._instance = null;
+        return await tts.TtsSession.create({
+          voiceId: DEFAULT_VOICE_ID,
+          wasmPaths: LOCAL_WASM_PATHS,
+        });
+      } catch (error) {
+        console.error(`Piper-Initialisierung fehlgeschlagen (Versuch ${attempt + 1}).`, error);
+        const delay = retryDelays[attempt];
+        if (delay === undefined) throw error;
+        await wait(delay);
+      }
+    }
+  }
+
+  async function ensureVoiceReady() {
     if (voiceBusy) return false;
-    if (ttsSessionRef.current && sessionVoiceRef.current === voiceId) return true;
+    if (ttsSessionRef.current && sessionVoiceRef.current === DEFAULT_VOICE_ID) return true;
     setVoiceBusy(true);
     setVoiceStatus('Stimme wird geladen …');
+    let phase: 'check' | 'download' | 'verify' | 'initialize' = 'check';
     try {
       const tts = await import('@mintplex-labs/piper-tts-web');
       const storedVoices = await tts.stored();
-      if (!storedVoices.includes(voiceId)) {
-        await tts.download(voiceId, (progress) => {
+      const downloadedNow = !storedVoices.includes(DEFAULT_VOICE_ID);
+      if (downloadedNow) {
+        phase = 'download';
+        await tts.download(DEFAULT_VOICE_ID, (progress) => {
           const percent = progress.total
             ? Math.round((progress.loaded / progress.total) * 100)
             : 0;
           setVoiceStatus(percent ? `Stimme laden · ${percent} %` : 'Stimme wird geladen …');
         });
+        phase = 'verify';
+        setVoiceStatus('Stimme wird gespeichert …');
+        await waitForStoredVoice(tts);
       }
+      phase = 'initialize';
       setVoiceStatus('Stimme wird initialisiert …');
-      tts.TtsSession._instance = null;
-      ttsSessionRef.current = await tts.TtsSession.create({
-        voiceId,
-        wasmPaths: LOCAL_WASM_PATHS,
-      });
-      sessionVoiceRef.current = voiceId;
+      ttsSessionRef.current = await createVoiceSession(tts, downloadedNow);
+      sessionVoiceRef.current = DEFAULT_VOICE_ID;
       setVoiceReady(true);
       setVoiceStatus('Stimme bereit');
       return true;
     } catch (error) {
-      console.error(error);
+      console.error(`Thorsten Emotional konnte in Phase "${phase}" nicht vorbereitet werden.`, error);
+      ttsSessionRef.current = null;
+      sessionVoiceRef.current = null;
       setVoiceReady(false);
       setVoiceStatus('Stimme nicht verfügbar');
-      showNotice('Die lokale Stimme konnte nicht geladen werden. Internetverbindung prüfen und erneut versuchen.');
+      showNotice(
+        phase === 'download'
+          ? 'Die Stimme konnte nicht heruntergeladen werden. Netzwerkverbindung prüfen und erneut versuchen.'
+          : 'Die Stimme konnte nicht initialisiert werden. Bitte erneut versuchen.',
+      );
       return false;
     } finally {
       setVoiceBusy(false);
@@ -537,8 +583,8 @@ export default function Home() {
 
   async function speakText(text: string, progressLabel: string) {
     if (voiceBusy) return;
-    if (!ttsSessionRef.current || sessionVoiceRef.current !== selectedVoiceId) {
-      const prepared = await prepareVoice(selectedVoiceId);
+    if (!ttsSessionRef.current || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
+      const prepared = await ensureVoiceReady();
       if (!prepared) return;
     }
 
@@ -546,8 +592,8 @@ export default function Home() {
     setVoiceStatus(progressLabel);
     try {
       const session = ttsSessionRef.current;
-      if (!session || sessionVoiceRef.current !== selectedVoiceId) {
-        throw new Error('Piper session is not ready for the selected voice.');
+      if (!session || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
+        throw new Error('Piper session is not ready for Thorsten Emotional.');
       }
       const audioBlob = await session.predict(text);
       stopCurrentAudio();
@@ -594,7 +640,7 @@ export default function Home() {
   function exportTournamentData() {
     try {
       const backup = createBackup(players, courts, {
-        voiceId: selectedVoiceId,
+        voiceId: DEFAULT_VOICE_ID,
         speedId: selectedSpeedId,
       });
       const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], {
@@ -643,7 +689,6 @@ export default function Home() {
       setPlayers(result.value.players);
       setCourts(result.value.courts);
       if (result.value.settings) {
-        setSelectedVoiceId(result.value.settings.voiceId);
         setSelectedSpeedId(result.value.settings.speedId);
       }
       setVoiceReady(false);
@@ -870,7 +915,18 @@ export default function Home() {
                       <span className="court-number">{court.id}</span>
                       <h3>Feld {court.id}</h3>
                     </div>
-                    {group && <span className="group-badge">{group}</span>}
+                    <div className="court-card-actions">
+                      {group && <span className="group-badge">{group}</span>}
+                      {court.players.some(Boolean) && (
+                        <button
+                          className="clear-court-button"
+                          onClick={() => clearCourtAssignments(court.id)}
+                          type="button"
+                        >
+                          Feld leeren
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="slots">
                     {[first, second].map((player, index) => {
@@ -961,7 +1017,8 @@ export default function Home() {
               <div className="form-grid">
                 <label className="form-field">
                   <span>Altersklasse</span>
-                  <select value={formAgeGroup} onChange={(event) => setFormAgeGroup(event.target.value as AgeGroup)}>
+                  <select required value={formAgeGroup} onChange={(event) => setFormAgeGroup(event.target.value as AgeGroup | '')}>
+                    <option disabled value="">Altersklasse wählen …</option>
                     {AGE_GROUPS.map((ageGroup) => <option key={ageGroup}>{ageGroup}</option>)}
                   </select>
                 </label>
@@ -975,7 +1032,13 @@ export default function Home() {
               <div className="dialog-actions">
                 {editingPlayer && <button className="delete-button" onClick={deletePlayer} type="button">Spieler löschen</button>}
                 <button className="cancel-button" onClick={() => setPlayerDialogOpen(false)} type="button">Abbrechen</button>
-                <button className="save-button" type="submit">{editingPlayer ? 'Speichern' : 'Spieler anlegen'}</button>
+                <button
+                  className="save-button"
+                  disabled={!isPlayerDraftValid(formName, formAgeGroup, formCategory)}
+                  type="submit"
+                >
+                  {editingPlayer ? 'Speichern' : 'Spieler anlegen'}
+                </button>
               </div>
             </form>
           </section>
@@ -995,22 +1058,10 @@ export default function Home() {
               <button onClick={() => setAnnouncementDialogOpen(false)} type="button" aria-label="Dialog schließen">×</button>
             </div>
 
-            <fieldset className="settings-group" disabled={voiceBusy}>
-              <legend>Stimme</legend>
-              <div className="voice-options">
-                {VOICE_OPTIONS.map((voice) => (
-                  <button
-                    className={selectedVoiceId === voice.id ? 'active' : ''}
-                    key={voice.id}
-                    onClick={() => handleVoiceChange(voice.id)}
-                    type="button"
-                  >
-                    <strong>{voice.label}</strong>
-                    <span>{voice.descriptor}</span>
-                  </button>
-                ))}
-              </div>
-            </fieldset>
+            <div className="fixed-voice">
+              <span>Stimme</span>
+              <strong>{FIXED_VOICE.label}</strong>
+            </div>
 
             <fieldset className="settings-group" disabled={voiceBusy}>
               <legend>Geschwindigkeit</legend>
@@ -1023,7 +1074,6 @@ export default function Home() {
                     type="button"
                   >
                     <strong>{speed.label}</strong>
-                    <span>{speed.rate.toFixed(2)}x</span>
                   </button>
                 ))}
               </div>
@@ -1032,7 +1082,7 @@ export default function Home() {
             <div className={`settings-voice-state ${voiceReady ? 'ready' : ''}`}>
               <span aria-hidden="true" />
               <div>
-                <strong>{selectedVoice.label} · {selectedVoice.descriptor}</strong>
+                <strong>{FIXED_VOICE.label}</strong>
                 <small>{voiceStatus}. Nur diese Stimme wird bei Bedarf heruntergeladen.</small>
               </div>
             </div>
@@ -1042,7 +1092,7 @@ export default function Home() {
               <button
                 className="prepare-button"
                 disabled={voiceBusy}
-                onClick={() => void prepareVoice()}
+                onClick={() => void ensureVoiceReady()}
                 type="button"
               >
                 Stimme vorbereiten

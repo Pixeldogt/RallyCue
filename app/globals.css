@@ -205,7 +205,10 @@ button { color: inherit; }
 .court-card-head > div { gap: 9px; }
 .court-card-head h3 { margin: 0; font-size: 15px; letter-spacing: -.2px; }
 .court-number { display: grid; width: 33px; height: 33px; place-items: center; border-radius: 11px; background: var(--primary); color: white; font-size: 14px; font-weight: 740; }
+.court-card-actions { justify-content: flex-end; flex-wrap: wrap; gap: 6px !important; }
 .group-badge { padding: 6px 9px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: 10px; font-weight: 730; }
+.clear-court-button { padding: 6px 10px; border: 1px solid rgba(156, 49, 86, .16); border-radius: 999px; background: #f8e9ed; color: #88435a; cursor: pointer; font-size: 9px; font-weight: 730; }
+.clear-court-button:hover { background: #f2dce2; }
 .slots { position: relative; margin: 15px 0 14px; }
 .slots > div { position: relative; }
 .player-slot { display: flex; align-items: center; width: 100%; height: 55px; padding: 0 10px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: 620; text-align: left; }
@@ -243,15 +246,15 @@ button { color: inherit; }
 .prepare-button { border: 1px solid rgba(104, 69, 183, .3); background: var(--primary-soft); color: var(--primary-dark); }
 .dialog-actions button:disabled { cursor: wait; opacity: .58; }
 .announcement-dialog { width: min(620px, 100%); }
+.fixed-voice { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding: 12px 14px; border-radius: 15px; background: var(--surface-low); }
+.fixed-voice span { color: #5f5865; font-size: 11px; font-weight: 700; }
+.fixed-voice strong { color: var(--primary-dark); font-size: 12px; }
 .settings-group { margin: 0; padding: 0; border: 0; }
 .settings-group + .settings-group { margin-top: 22px; }
 .settings-group legend { margin-bottom: 9px; color: #5f5865; font-size: 11px; font-weight: 740; }
-.voice-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.voice-options button, .speed-options button { display: flex; min-width: 0; border: 1px solid var(--outline); background: #fbfafc; cursor: pointer; color: var(--ink); flex-direction: column; text-align: left; }
-.voice-options button { min-height: 58px; padding: 11px 13px; border-radius: 15px; }
-.voice-options button.active, .speed-options button.active { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); box-shadow: inset 0 0 0 1px rgba(104, 69, 183, .13); }
-.voice-options strong, .speed-options strong { font-size: 12px; }
-.voice-options span, .speed-options span { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.speed-options button { display: flex; min-width: 0; border: 1px solid var(--outline); background: #fbfafc; cursor: pointer; color: var(--ink); flex-direction: column; text-align: left; }
+.speed-options button.active { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); box-shadow: inset 0 0 0 1px rgba(104, 69, 183, .13); }
+.speed-options strong { font-size: 12px; }
 .speed-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .speed-options button { min-height: 52px; padding: 9px 12px; border-radius: 14px; }
 .settings-voice-state { display: flex; align-items: center; gap: 10px; margin-top: 22px; padding: 12px 14px; border-radius: 15px; background: var(--surface-low); }
