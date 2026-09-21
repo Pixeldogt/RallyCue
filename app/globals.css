@@ -100,7 +100,7 @@ button { color: inherit; }
 .panel-heading { justify-content: space-between; }
 .eyebrow { margin: 0 0 4px; color: var(--primary); font-size: 11px; font-weight: 760; letter-spacing: .14em; text-transform: uppercase; }
 .panel-heading h2, .court-heading h2 { margin: 0; font-size: 25px; line-height: 1.15; letter-spacing: -.65px; }
-.panel-heading h2 span { color: var(--muted); font-size: 16px; font-weight: 560; }
+.panel-heading h2 span { color: var(--muted); font-size: inherit; font-weight: 560; }
 
 .add-button {
   width: 44px;

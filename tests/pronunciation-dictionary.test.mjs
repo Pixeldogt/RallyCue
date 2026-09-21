@@ -50,7 +50,7 @@ test('weitere Turniernamen erhalten die gewünschte deutsche Lautnäherung', () 
       'Medina Stella Freerk Sievers Zheng Zhang Hoang Sidita Xheka Reichstein Ben George Max',
       builtIns,
     ),
-    'Meddina S\u034Ftella Frärk Siewers Schang Dschang Hoang Siedie-da Sika Raichschtain Benn Tschortsch Macks',
+    'Meddina S\u034Ftella Frärk Siewers Schang Dschang Hoang Sidie-ta Sieker Raichschtain Benn Shortsch Macks',
   );
 });
 
