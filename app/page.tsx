@@ -12,6 +12,7 @@ import {
 import Image from 'next/image';
 import {
   applyPronunciationDictionary,
+  buildCourtAnnouncement,
   MAX_PRONUNCIATION_REPLACEMENT_LENGTH,
   MAX_PRONUNCIATION_SOURCE_LENGTH,
   mergePronunciationDictionaries,
@@ -685,7 +686,11 @@ export default function Home() {
     setVoiceBusy(false);
   }
 
-  async function speakText(text: string, progressLabel: string) {
+  async function speakText(
+    text: string,
+    progressLabel: string,
+    dictionaryAlreadyApplied = false,
+  ) {
     if (voiceBusy) return;
     if (!ttsSessionRef.current || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
       const prepared = await ensureVoiceReady();
@@ -699,10 +704,9 @@ export default function Home() {
       if (!session || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
         throw new Error('Piper session is not ready for Thorsten.');
       }
-      const spokenText = applyPronunciationDictionary(
-        text,
-        mergedPronunciationDictionary,
-      );
+      const spokenText = dictionaryAlreadyApplied
+        ? text
+        : applyPronunciationDictionary(text, mergedPronunciationDictionary);
       const audioBlob = await session.predict(spokenText);
       stopCurrentAudio();
       const audioUrl = URL.createObjectURL(audioBlob);
@@ -741,8 +745,14 @@ export default function Home() {
     const second = court.players[1] ? playerById.get(court.players[1]) : null;
     if (!first || !second || voiceBusy) return;
 
-    const text = `Es spielen auf Feld ${court.id}, ${divisionOf(first)}, ${first.name} gegen ${second.name}. Ich wiederhole: ${first.name} gegen ${second.name}, auf Feld ${court.id}.`;
-    await speakText(text, `Ansage für Feld ${court.id} …`);
+    const text = buildCourtAnnouncement(
+      court.id,
+      divisionOf(first),
+      first.name,
+      second.name,
+      mergedPronunciationDictionary,
+    );
+    await speakText(text, `Ansage für Feld ${court.id} …`, true);
   }
 
   function exportTournamentData() {
@@ -822,7 +832,6 @@ export default function Home() {
         </div>
         <div className="brand-copy">
           <h1>RallyCue</h1>
-          <p>Schülerturnier · 9 Felder</p>
         </div>
         <div className="topbar-actions">
           {PWA_ENABLED && !isStandalone && (
@@ -1023,8 +1032,7 @@ export default function Home() {
                 <article className={`court-card ${ready ? 'ready' : ''}`} key={court.id}>
                   <div className="court-card-head">
                     <div>
-                      <span className="court-number">{court.id}</span>
-                      <h3>Feld {court.id}</h3>
+                      <span className="court-number">Feld {court.id}</span>
                     </div>
                     <div className="court-card-actions">
                       {group && <span className="group-badge">{group}</span>}
@@ -1339,7 +1347,25 @@ export default function Home() {
         const completeMatch = Boolean(court?.players[0] && court?.players[1]);
         return (
           <div className="dialog-backdrop" role="presentation">
-            <section className="player-dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="overwrite-dialog-title">
+            <section
+              className="player-dialog confirm-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="overwrite-dialog-title"
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' || !(event.target instanceof HTMLButtonElement)) return;
+                event.preventDefault();
+                if (event.target.classList.contains('overwrite-button')) {
+                  commitAssignment(
+                    pendingOverwrite.playerId,
+                    pendingOverwrite.courtId,
+                    pendingOverwrite.slotIndex,
+                  );
+                } else if (event.target.classList.contains('cancel-button')) {
+                  setPendingOverwrite(null);
+                }
+              }}
+            >
               <span className="warning-mark" aria-hidden="true">!</span>
               <p className="eyebrow">Sicherheitsabfrage</p>
               <h2 id="overwrite-dialog-title">{completeMatch ? 'Bestehende Begegnung ändern?' : 'Belegten Platz überschreiben?'}</h2>
@@ -1360,6 +1386,7 @@ export default function Home() {
               <div className="dialog-actions confirm-actions">
                 <button className="cancel-button" onClick={() => setPendingOverwrite(null)} type="button">Abbrechen</button>
                 <button
+                  autoFocus
                   className="overwrite-button"
                   onClick={() => commitAssignment(pendingOverwrite.playerId, pendingOverwrite.courtId, pendingOverwrite.slotIndex)}
                   type="button"
@@ -1379,6 +1406,15 @@ export default function Home() {
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="clear-court-dialog-title"
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || !(event.target instanceof HTMLButtonElement)) return;
+              event.preventDefault();
+              if (event.target.classList.contains('clear-confirm-button')) {
+                confirmClearCourt();
+              } else if (event.target.classList.contains('cancel-button')) {
+                setPendingClearCourtId(null);
+              }
+            }}
           >
             <span className="warning-mark clear-warning-mark" aria-hidden="true">!</span>
             <p className="eyebrow">Sicherheitsabfrage</p>
@@ -1390,7 +1426,7 @@ export default function Home() {
               <button className="cancel-button" onClick={() => setPendingClearCourtId(null)} type="button">
                 Abbrechen
               </button>
-              <button className="clear-confirm-button" onClick={confirmClearCourt} type="button">
+              <button autoFocus className="clear-confirm-button" onClick={confirmClearCourt} type="button">
                 Feld leeren
               </button>
             </div>

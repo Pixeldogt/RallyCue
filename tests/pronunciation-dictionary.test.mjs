@@ -4,20 +4,22 @@ import test from 'node:test';
 import {
   BUILTIN_PRONUNCIATION_DICTIONARY,
   applyPronunciationDictionary,
+  buildCourtAnnouncement,
   mergePronunciationDictionaries,
+  prepareNameForAnnouncement,
   validatePronunciationDictionary,
 } from '../lib/pronunciation-dictionary.ts';
 
 const builtIns = mergePronunciationDictionaries([]);
 
-test('das mitgelieferte Wörterbuch enthält genau die 26 geprüften Einträge', () => {
-  assert.equal(BUILTIN_PRONUNCIATION_DICTIONARY.length, 26);
+test('das mitgelieferte Wörterbuch enthält genau die 34 geprüften Einträge', () => {
+  assert.equal(BUILTIN_PRONUNCIATION_DICTIONARY.length, 34);
 });
 
 test('zentrale Problemnamen werden für Piper korrigiert', () => {
   assert.equal(
     applyPronunciationDictionary('Marcel, Nikhilesh, Nguyen und Zheng.', builtIns),
-    'Marsell, Nikhilesch, Ngwien und Dscheng.',
+    'Marsell, Nikhilesch, Nüyen und Dscheng.',
   );
 });
 
@@ -31,14 +33,52 @@ test('Matching ist unabhängig von Groß- und Kleinschreibung', () => {
 test('nur vollständige Tokens werden ersetzt und Satzzeichen bleiben erhalten', () => {
   assert.equal(
     applyPronunciationDictionary('Marcelino trifft Marcel; Nguyen!', builtIns),
-    'Marcelino trifft Marsell; Ngwien!',
+    'Marcelino trifft Marsell; Nüyen!',
   );
 });
 
 test('Bindestriche und Apostrophe bilden sinnvolle Namensgrenzen', () => {
   assert.equal(
     applyPronunciationDictionary("Marcel-Nguyen und Marcel'Nguyen", builtIns),
-    "Marsell-Ngwien und Marsell'Ngwien",
+    "Marsell-Nüyen und Marsell'Nüyen",
+  );
+});
+
+test('Vor- und Nachnamen werden korrigiert, ohne die Namensmelodie zu zerhacken', () => {
+  assert.equal(
+    prepareNameForAnnouncement('Sally Chen Xuan Zhu', builtIns),
+    'Sällie Schän Schüän Dschu',
+  );
+  assert.equal(
+    prepareNameForAnnouncement('Tim Hoang Nguyen', builtIns),
+    'Tim Hwang Nüyen',
+  );
+  assert.equal(
+    prepareNameForAnnouncement('Stella Ying Loi', builtIns),
+    'Stella Jing Loi',
+  );
+});
+
+test('mehrteilige Custom-Einträge greifen vor der Namensaufbereitung', () => {
+  const entries = mergePronunciationDictionaries([
+    { source: 'Stella Ying Loi', replacement: 'Stella Jing Loy' },
+  ]);
+  assert.equal(
+    prepareNameForAnnouncement('Stella Ying Loi', entries),
+    'Stella Jing Loy',
+  );
+});
+
+test('Begegnungsansagen setzen nur vor gegen eine weiche Sprechpause', () => {
+  assert.equal(
+    buildCourtAnnouncement(
+      1,
+      'Jungen Einzel U13',
+      'Tim Hoang Nguyen',
+      'Lucas Chen Xuan Zhu',
+      builtIns,
+    ),
+    'Es spielen auf Feld 1, Jungen Einzel U13: Tim Hwang Nüyen, gegen Lucas Schän Schüän Dschu. Ich wiederhole: Tim Hwang Nüyen, gegen Lucas Schän Schüän Dschu, auf Feld 1.',
   );
 });
 

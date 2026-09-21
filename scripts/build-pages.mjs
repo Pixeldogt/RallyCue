@@ -29,7 +29,7 @@ const packageJson = JSON.parse(
 
 const manifest = {
   id: `${basePath}/`,
-  name: 'RallyCue – Badminton-Ansagen',
+  name: 'RallyCue',
   short_name: 'RallyCue',
   description: 'Spieler auf neun Felder verteilen und Begegnungen direkt aufrufen.',
   start_url: `${basePath}/`,

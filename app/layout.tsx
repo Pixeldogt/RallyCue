@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Cherry_Bomb_One, Geist, Geist_Mono } from 'next/font/google';
+import { Damion, Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
 const geistSans = Geist({
@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-const cherryBombOne = Cherry_Bomb_One({
+const damion = Damion({
   variable: '--font-brand',
   weight: '400',
   subsets: ['latin'],
@@ -22,7 +22,7 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const pwaEnabled = process.env.NEXT_PUBLIC_ENABLE_PWA === 'true';
 
 export const metadata: Metadata = {
-  title: 'RallyCue – Badminton-Ansagen',
+  title: 'RallyCue',
   description: 'Spieler auf neun Felder verteilen und Begegnungen direkt aufrufen.',
   ...(pwaEnabled
     ? {
@@ -48,7 +48,7 @@ export default function RootLayout({
   return (
     <html lang="de">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${cherryBombOne.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${damion.variable} antialiased`}
       >
         {children}
       </body>

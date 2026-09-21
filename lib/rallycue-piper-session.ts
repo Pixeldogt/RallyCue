@@ -58,6 +58,12 @@ type SessionOptions = {
 };
 
 const MAX_CHUNK_LENGTH = 400;
+export const LEADING_SILENCE_MS = 180;
+export const SPEECH_LENGTH_SCALE = 1.08;
+
+export function leadingSilenceSampleCount(sampleRate: number) {
+  return Math.max(0, Math.round((sampleRate * LEADING_SILENCE_MS) / 1000));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -317,7 +323,7 @@ export class RallyCuePiperSession {
       input_lengths: new this.ort.Tensor('int64', [phonemeIds.length]),
       scales: new this.ort.Tensor('float32', [
         this.modelConfig.inference.noise_scale,
-        this.modelConfig.inference.length_scale,
+        this.modelConfig.inference.length_scale * SPEECH_LENGTH_SCALE,
         this.modelConfig.inference.noise_w,
       ]),
       sid: new this.ort.Tensor('int64', [this.speakerId]),
@@ -336,9 +342,13 @@ export class RallyCuePiperSession {
 
     const pcmChunks: Float32Array[] = [];
     for (const chunk of chunks) pcmChunks.push(await this.predictChunk(chunk));
-    const totalLength = pcmChunks.reduce((sum, pcm) => sum + pcm.length, 0);
+    const leadingSilenceLength = leadingSilenceSampleCount(
+      this.modelConfig.audio.sample_rate,
+    );
+    const totalLength =
+      leadingSilenceLength + pcmChunks.reduce((sum, pcm) => sum + pcm.length, 0);
     const merged = new Float32Array(totalLength);
-    let offset = 0;
+    let offset = leadingSilenceLength;
     for (const pcm of pcmChunks) {
       merged.set(pcm, offset);
       offset += pcm.length;

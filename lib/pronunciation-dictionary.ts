@@ -15,21 +15,29 @@ export const BUILTIN_PRONUNCIATION_DICTIONARY = [
   { source: 'Matyas', replacement: 'Maatjaasch' },
   { source: 'Geanta', replacement: 'Dscheanta' },
   { source: 'Nikhilesh', replacement: 'Nikhilesch' },
-  { source: 'Srushti', replacement: 'Sruschti' },
+  { source: 'Srushti', replacement: 'Srischti' },
   { source: 'Aavish', replacement: 'Aawisch' },
   { source: 'Nayee', replacement: 'Naai' },
   { source: 'Yuvan', replacement: 'Juwan' },
   { source: 'Uthpala', replacement: 'Utpala' },
   { source: 'Ekanayake', replacement: 'Eikenaiake' },
   { source: 'Pathirajar', replacement: 'Patiradschar' },
-  { source: 'Nguyen', replacement: 'Ngwien' },
+  { source: 'Nguyen', replacement: 'Nüyen' },
   { source: 'Hoang', replacement: 'Hwang' },
-  { source: 'Rosicki', replacement: 'Rositzki' },
+  { source: 'Rosicki', replacement: 'Rosicky' },
   { source: 'Savucu', replacement: 'Savudschu' },
   { source: 'Yezda', replacement: 'Jesda' },
   { source: 'Xheka', replacement: 'Dscheka' },
   { source: 'Zheng', replacement: 'Dscheng' },
   { source: 'Zhu', replacement: 'Dschu' },
+  { source: 'Leia', replacement: 'Leja' },
+  { source: 'Ying', replacement: 'Jing' },
+  { source: 'Szielasko', replacement: 'Schielasko' },
+  { source: 'Temghare', replacement: 'Temgare' },
+  { source: 'Sally', replacement: 'Sällie' },
+  { source: 'Yu', replacement: 'Jü' },
+  { source: 'Chen', replacement: 'Schän' },
+  { source: 'Xuan', replacement: 'Schüän' },
 ] as const satisfies readonly PronunciationEntry[];
 
 export const MAX_PRONUNCIATION_SOURCE_LENGTH = 100;
@@ -140,4 +148,26 @@ export function applyPronunciationDictionary(
   return text.replace(matcher, (match) =>
     replacements.get(pronunciationSourceKey(match)) ?? match,
   );
+}
+
+export function prepareNameForAnnouncement(
+  name: string,
+  entries: readonly PronunciationEntry[],
+) {
+  return applyPronunciationDictionary(name, entries)
+    .split(/\s+/u)
+    .filter(Boolean)
+    .join(' ');
+}
+
+export function buildCourtAnnouncement(
+  courtId: number,
+  division: string,
+  firstName: string,
+  secondName: string,
+  entries: readonly PronunciationEntry[],
+) {
+  const first = prepareNameForAnnouncement(firstName, entries);
+  const second = prepareNameForAnnouncement(secondName, entries);
+  return `Es spielen auf Feld ${courtId}, ${division}: ${first}, gegen ${second}. Ich wiederhole: ${first}, gegen ${second}, auf Feld ${courtId}.`;
 }

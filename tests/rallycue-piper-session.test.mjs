@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  LEADING_SILENCE_MS,
+  SPEECH_LENGTH_SCALE,
+  leadingSilenceSampleCount,
   neutralSpeakerTensorValues,
   validateThorstenEmotionalModelConfig,
 } from '../lib/rallycue-piper-session.ts';
@@ -30,6 +33,15 @@ function validModelConfig() {
 
 test('der ONNX-Speaker-Tensor verwendet ausschließlich neutral mit ID 4', () => {
   assert.deepEqual(neutralSpeakerTensorValues(), [4]);
+});
+
+test('jede WAV-Ansage beginnt mit einem kurzen Audiopuffer', () => {
+  assert.equal(LEADING_SILENCE_MS, 180);
+  assert.equal(leadingSilenceSampleCount(22050), 3969);
+});
+
+test('die Ansage wird für verständliche Namen nur leicht verlangsamt', () => {
+  assert.equal(SPEECH_LENGTH_SCALE, 1.08);
 });
 
 test('die erwartete Thorsten-Emotional-Konfiguration wird akzeptiert', () => {
