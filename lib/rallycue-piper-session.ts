@@ -51,7 +51,7 @@ type OrtRuntime = {
   };
 };
 
-type SessionOptions = {
+export type RallyCuePiperSessionOptions = {
   voiceId: VoiceId;
   speakerId: number;
   wasmPaths: PiperWasmPaths;
@@ -229,7 +229,7 @@ export class RallyCuePiperSession {
     this.speakerId = speakerId;
   }
 
-  static async create(options: SessionOptions) {
+  static async create(options: RallyCuePiperSessionOptions) {
     if (options.voiceId !== DEFAULT_VOICE_ID) {
       throw new Error(`RallyCue unterstützt nur die feste Stimme ${DEFAULT_VOICE_ID}.`);
     }
@@ -253,11 +253,11 @@ export class RallyCuePiperSession {
     ort.env.wasm.wasmPaths = {
       mjs: new URL(
         `${options.wasmPaths.onnxWasm}ort-wasm-simd-threaded.mjs`,
-        window.location.href,
+        globalThis.location.href,
       ),
       wasm: new URL(
         `${options.wasmPaths.onnxWasm}ort-wasm-simd-threaded.wasm`,
-        window.location.href,
+        globalThis.location.href,
       ),
     };
 

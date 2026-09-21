@@ -50,6 +50,7 @@ import {
 
 type LocalTtsSession = {
   predict: (text: string) => Promise<Blob>;
+  dispose?: () => void;
 };
 
 type InstallPromptEvent = Event & {
@@ -123,6 +124,22 @@ function ageToneClass(ageGroup: AgeGroup) {
   return `age-tone-${ageGroup.toLowerCase()}`;
 }
 
+type MaterialSymbolName = 'download' | 'upload' | 'volume';
+
+const MATERIAL_SYMBOL_PATHS: Record<MaterialSymbolName, string> = {
+  download: 'M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z',
+  upload: 'M5 18h14v2H5v-2zM9 16h6v-6h4l-7-7-7 7h4v6z',
+  volume: 'M3 9v6h4l5 5V4L7 9H3zm11 9.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71zm0-10.74v8.05c1.48-.73 2.5-2.25 2.5-4.02S15.48 8.71 14 7.97z',
+};
+
+function MaterialSymbol({ name }: { name: MaterialSymbolName }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d={MATERIAL_SYMBOL_PATHS[name]} />
+    </svg>
+  );
+}
+
 export default function Home() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [courts, setCourts] = useState<Court[]>(() => createEmptyCourts());
@@ -173,6 +190,25 @@ export default function Home() {
   const speechSynthesisQueueRef = useRef<SpeechSynthesisTask[]>([]);
   const speechSynthesisRunningRef = useRef(false);
   const pendingSpeechSynthesisRef = useRef<Map<string, Promise<Blob>>>(new Map());
+
+  useEffect(() => {
+    const clearDragState = () => setDraggedPlayerId(null);
+    window.addEventListener('dragend', clearDragState);
+    window.addEventListener('drop', clearDragState);
+    window.addEventListener('blur', clearDragState);
+    return () => {
+      window.removeEventListener('dragend', clearDragState);
+      window.removeEventListener('drop', clearDragState);
+      window.removeEventListener('blur', clearDragState);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      ttsSessionRef.current?.dispose?.();
+      ttsSessionRef.current = null;
+    };
+  }, []);
 
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
@@ -625,8 +661,10 @@ export default function Home() {
     const retryDelays = retryAfterDownload ? VOICE_RETRY_DELAYS_MS : [];
     for (let attempt = 0; ; attempt += 1) {
       try {
-        const { RallyCuePiperSession } = await import('@/lib/rallycue-piper-session');
-        return await RallyCuePiperSession.create({
+        const { createRallyCueTtsWorkerSession } = await import(
+          '@/lib/rallycue-tts-worker-client'
+        );
+        return await createRallyCueTtsWorkerSession({
           voiceId: DEFAULT_VOICE_ID,
           speakerId: THORSTEN_EMOTIONAL_SPEAKER.id,
           wasmPaths: LOCAL_WASM_PATHS,
@@ -682,6 +720,7 @@ export default function Home() {
         return true;
       } catch (error) {
         console.error(`Thorsten konnte in Phase "${phase}" nicht vorbereitet werden.`, error);
+        ttsSessionRef.current?.dispose?.();
         ttsSessionRef.current = null;
         sessionVoiceRef.current = null;
         setVoiceReady(false);
@@ -950,6 +989,7 @@ export default function Home() {
       }
 
       stopCurrentAudio();
+      ttsSessionRef.current?.dispose?.();
       ttsSessionRef.current = null;
       sessionVoiceRef.current = null;
       setPlayers(result.value.players);
@@ -987,7 +1027,7 @@ export default function Home() {
             title="Turnierdaten sichern"
             type="button"
           >
-            Export
+            <MaterialSymbol name="download" />
           </button>
           <button
             aria-label="Sicherung laden"
@@ -996,7 +1036,7 @@ export default function Home() {
             title="Sicherung laden"
             type="button"
           >
-            Import
+            <MaterialSymbol name="upload" />
           </button>
           <input
             ref={backupInputRef}
@@ -1010,14 +1050,22 @@ export default function Home() {
               App installieren
             </button>
           )}
-          <button
+          <span
+            aria-live="polite"
             className={`voice-status ${voiceReady ? 'ready' : ''}`}
-            onClick={() => setAnnouncementDialogOpen(true)}
-            type="button"
+            role="status"
           >
             <span aria-hidden="true" />
             {voiceStatus}
-            <strong>Ansage</strong>
+          </span>
+          <button
+            aria-label="Ansage-Einstellungen"
+            className="announcement-settings-button"
+            onClick={() => setAnnouncementDialogOpen(true)}
+            title="Ansage-Einstellungen"
+            type="button"
+          >
+            <MaterialSymbol name="volume" />
           </button>
         </div>
       </header>
@@ -1029,7 +1077,7 @@ export default function Home() {
               <p className="eyebrow">Teilnehmende</p>
               <h2>Spieler <span>{players.length}</span></h2>
             </div>
-            <button className="add-button" onClick={openNewPlayerDialog} type="button" aria-label="Spieler hinzufügen">+</button>
+            <button className="add-button" onClick={openNewPlayerDialog} type="button" aria-label="Neuen Spieler anlegen" title="Neuen Spieler anlegen">+</button>
           </div>
 
           <label className="search-field">
@@ -1038,7 +1086,17 @@ export default function Home() {
               type="search"
               placeholder="Spieler suchen …"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onFocus={() => {
+                setFilter('Alle');
+                setCategoryFilter('Alle');
+              }}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                if (event.target.value.trim()) {
+                  setFilter('Alle');
+                  setCategoryFilter('Alle');
+                }
+              }}
             />
           </label>
 
@@ -1071,9 +1129,9 @@ export default function Home() {
           <div className="player-groups">
             {playerGroups.map(({ key, ageGroup, category, players: groupPlayers }) => (
               <section className="player-group" key={key}>
-                <div className="group-title">
+                <div className={`group-title ${ageToneClass(ageGroup)}`}>
                   <span className="group-label">
-                    <span className={`group-age ${ageToneClass(ageGroup)}`}>{ageGroup}</span>
+                    <strong>{ageGroup}</strong>
                     <span>{category}</span>
                   </span>
                   <span>{groupPlayers.length} {groupPlayers.length === 1 ? 'Spieler' : 'Spieler'}</span>
@@ -1280,7 +1338,6 @@ export default function Home() {
                     ) : announcementLoading ? (
                       <span className="announcement-preload" aria-label="Ansage wird vorbereitet">
                         <span aria-hidden="true"><span /></span>
-                        <small>Ansage wird vorbereitet</small>
                       </span>
                     ) : (
                       <>

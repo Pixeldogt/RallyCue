@@ -54,10 +54,13 @@ button { color: inherit; }
 .brand-mark img { width: 48px; height: 48px; object-fit: contain; }
 .brand-copy h1 { margin: 0; font-family: var(--font-brand), cursive; font-size: 26px; font-weight: 400; line-height: 1; letter-spacing: .2px; }
 .topbar-actions { display: flex; align-items: center; gap: 9px; margin-left: auto; }
-.topbar-data-button { height: 36px; padding: 0 13px; border: 1px solid var(--outline); border-radius: 999px; background: white; color: #625a69; cursor: pointer; font-size: 12px; font-weight: 700; }
+.topbar-data-button, .announcement-settings-button { display: grid; width: 39px; height: 39px; padding: 0; place-items: center; border: 1px solid var(--outline); border-radius: 50%; background: white; color: #625a69; cursor: pointer; }
+.topbar-data-button svg, .announcement-settings-button svg { width: 20px; height: 20px; fill: currentColor; }
 .topbar-data-button:hover { border-color: rgba(104, 69, 183, .28); background: var(--primary-soft); color: var(--primary-dark); }
 .install-button { height: 39px; padding: 0 14px; border: 1px solid rgba(104, 69, 183, .25); border-radius: 999px; background: white; color: var(--primary-dark); cursor: pointer; font-size: 13px; font-weight: 700; }
 .install-button:hover { background: var(--primary-soft); }
+.announcement-settings-button { color: var(--primary-dark); }
+.announcement-settings-button:hover { border-color: rgba(104, 69, 183, .28); background: var(--primary-soft); }
 
 .event-status,
 .voice-status {
@@ -70,17 +73,15 @@ button { color: inherit; }
   border-radius: 999px;
   background: var(--primary-soft);
   color: var(--primary-dark);
-  cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
 }
+.voice-status { min-width: 152px; justify-content: flex-start; }
 
 .event-status span,
 .voice-status > span { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 4px rgba(104, 69, 183, .13); }
 .voice-status.ready { background: #eff9f2; color: #276442; }
 .voice-status.ready > span { background: #43a86b; box-shadow: 0 0 0 4px rgba(67, 168, 107, .13); }
-.voice-status:disabled { cursor: wait; opacity: .78; }
-.voice-status strong { margin-left: 3px; font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
 .workspace { display: grid; grid-template-columns: 322px minmax(760px, 1fr); min-height: calc(100vh - 82px); }
 
 .player-panel {
@@ -90,6 +91,7 @@ button { color: inherit; }
   height: calc(100vh - 82px);
   padding: 28px 22px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   border-right: 1px solid var(--outline);
   background: var(--surface);
 }
@@ -138,21 +140,20 @@ button { color: inherit; }
 .age-tone-u11 { --age-bg: #ffe4e8; --age-ink: #8a4050; --age-border: #efb9c3; }
 .age-tone-u13 { --age-bg: #dff5ea; --age-ink: #246748; --age-border: #a9ddc2; }
 .age-tone-u15 { --age-bg: #e4efff; --age-ink: #315e93; --age-border: #b6cff0; }
-.age-tone-u17 { --age-bg: #eee7fb; --age-ink: #5e46a1; --age-border: #cfc0ed; }
+.age-tone-u17 { --age-bg: #ddcdf7; --age-ink: #55308f; --age-border: #ad8add; }
 .age-tone-u19 { --age-bg: #fde8d8; --age-ink: #8a4d24; --age-border: #edc2a3; }
 .filter-chip[class*='age-tone-'],
 .avatar[class*='age-tone-'],
 .slot-avatar[class*='age-tone-'],
-.group-age[class*='age-tone-'],
 .group-badge[class*='age-tone-'] { border-color: var(--age-border); background: var(--age-bg); color: var(--age-ink); }
 .category-filter { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-bottom: 22px; padding: 3px; border-radius: 12px; background: var(--surface-low); }
 .category-filter button { height: 30px; border: 0; border-radius: 9px; background: transparent; color: #77717c; cursor: pointer; font-size: 11px; font-weight: 680; }
 .category-filter button.active { background: white; color: var(--primary-dark); box-shadow: 0 2px 7px rgba(56, 47, 65, .09); }
-.player-group + .player-group { margin-top: 22px; }
-.group-title { justify-content: space-between; padding: 0 5px 8px; color: var(--muted); font-size: 11px; font-weight: 730; letter-spacing: .06em; text-transform: uppercase; }
-.group-title > span:last-child { color: #a09aa5; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.player-group + .player-group { margin-top: 18px; }
+.group-title { justify-content: space-between; margin-bottom: 7px; padding: 8px 10px; border: 1px solid var(--age-border); border-radius: 12px; background: var(--age-bg); color: var(--age-ink); font-size: 11px; font-weight: 730; letter-spacing: .06em; text-transform: uppercase; }
+.group-title > span:last-child { color: currentColor; font-weight: 620; letter-spacing: 0; opacity: .72; text-transform: none; }
 .group-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.group-age { padding: 3px 7px; border: 1px solid transparent; border-radius: 999px; letter-spacing: .04em; }
+.group-label strong { font-weight: 800; letter-spacing: .04em; }
 
 .player-row {
   display: flex;
@@ -234,10 +235,9 @@ button { color: inherit; }
 .announce-button:disabled { background: #eeeaf0; color: #a7a0aa; cursor: not-allowed; }
 .announce-button span { font-size: 16px; }
 .announce-button.preparing:disabled { background: var(--primary); color: white; opacity: 1; }
-.announcement-preload { display: grid; width: 100%; place-items: center; gap: 4px; }
-.announcement-preload > span { position: relative; display: block; width: 52%; height: 7px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .92); }
+.announcement-preload { display: grid; width: 100%; place-items: center; }
+.announcement-preload > span { position: relative; display: block; width: 34%; height: 4px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .92); }
 .announcement-preload > span > span { position: absolute; inset: 0 auto 0 0; width: 88%; border-radius: inherit; background: #43a86b; animation: announcement-preload-fill 5s ease-out forwards; transform-origin: left; }
-.announcement-preload small { color: rgba(255, 255, 255, .9); font-size: 9px; font-weight: 680; line-height: 1; }
 @keyframes announcement-preload-fill { from { transform: scaleX(.08); } to { transform: scaleX(1); } }
 
 .dialog-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; padding: 30px; place-items: center; background: rgba(31, 26, 37, .42); backdrop-filter: blur(5px); }
