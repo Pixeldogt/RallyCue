@@ -19,7 +19,7 @@ test('das mitgelieferte Wörterbuch enthält genau die 43 geprüften Einträge',
 test('zentrale Problemnamen werden für Piper korrigiert', () => {
   assert.equal(
     applyPronunciationDictionary('Marcel, Nikhilesh, Nguyen und Zheng.', builtIns),
-    'Marsell, Nikhilesch, Nüyen und Dschang.',
+    'Marsell, Nikhilesch, Nüyen und Schang.',
   );
 });
 
@@ -50,7 +50,7 @@ test('weitere Turniernamen erhalten die gewünschte deutsche Lautnäherung', () 
       'Medina Stella Freerk Sievers Zheng Zhang Hoang Sidita Xheka Reichstein Ben George Max',
       builtIns,
     ),
-    'Meddina S\u034Ftella Frärk Siewers Dschang Dschang Hoang Sidieta Dschäka Raichschtain Benn Dschordsch Macks',
+    'Meddina S\u034Ftella Frärk Siewers Schang Dschang Hoang Siedie-da Sika Raichschtain Benn Tschortsch Macks',
   );
 });
 
