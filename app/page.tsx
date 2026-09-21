@@ -75,6 +75,12 @@ type VoicePreparationOptions = {
   background: boolean;
 };
 
+type SpeechSynthesisTask = {
+  spokenText: string;
+  resolve: (audio: Blob) => void;
+  reject: (error: unknown) => void;
+};
+
 const PLAYER_STORAGE_KEY = 'rallycue.players.v1';
 const COURT_STORAGE_KEY = 'rallycue.courts.v1';
 const LEGACY_PLAYER_STORAGE_KEY = 'courtcall.players.v1';
@@ -93,6 +99,7 @@ const LOCAL_WASM_PATHS = {
 const TEST_ANNOUNCEMENT =
   'Testansage. Es spielen auf Feld vier Max Mustermann gegen Bernd Beispiel.';
 const VOICE_RETRY_DELAYS_MS = [50, 100, 200, 400, 800];
+const MAX_AUDIO_CACHE_ENTRIES = 24;
 
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -110,6 +117,10 @@ function sortPlayers(players: Player[]) {
   return [...players].sort((a, b) =>
     a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }),
   );
+}
+
+function ageToneClass(ageGroup: AgeGroup) {
+  return `age-tone-${ageGroup.toLowerCase()}`;
 }
 
 export default function Home() {
@@ -144,6 +155,12 @@ export default function Home() {
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('Stimme prüfen …');
+  const [preparedSpeechKeys, setPreparedSpeechKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [preparingSpeechKeys, setPreparingSpeechKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +169,10 @@ export default function Home() {
   const ttsSessionRef = useRef<LocalTtsSession | null>(null);
   const sessionVoiceRef = useRef<VoiceId | null>(null);
   const voicePreparationRef = useRef<Promise<boolean> | null>(null);
+  const audioBlobCacheRef = useRef<Map<string, Blob>>(new Map());
+  const speechSynthesisQueueRef = useRef<SpeechSynthesisTask[]>([]);
+  const speechSynthesisRunningRef = useRef(false);
+  const pendingSpeechSynthesisRef = useRef<Map<string, Promise<Blob>>>(new Map());
 
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
@@ -207,6 +228,25 @@ export default function Home() {
     () => mergePronunciationDictionaries(customPronunciations),
     [customPronunciations],
   );
+  const courtAnnouncements = useMemo(() => {
+    const announcements = new Map<number, string>();
+    for (const court of courts) {
+      const first = court.players[0] ? playerById.get(court.players[0]) : null;
+      const second = court.players[1] ? playerById.get(court.players[1]) : null;
+      if (!first || !second || divisionOf(first) !== divisionOf(second)) continue;
+      announcements.set(
+        court.id,
+        buildCourtAnnouncement(
+          court.id,
+          divisionOf(first),
+          first.name,
+          second.name,
+          mergedPronunciationDictionary,
+        ),
+      );
+    }
+    return announcements;
+  }, [courts, mergedPronunciationDictionary, playerById]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -686,6 +726,121 @@ export default function Home() {
     setVoiceBusy(false);
   }
 
+  function markSpeechPreparing(spokenText: string, preparing: boolean) {
+    setPreparingSpeechKeys((current) => {
+      const next = new Set(current);
+      if (preparing) next.add(spokenText);
+      else next.delete(spokenText);
+      return next;
+    });
+  }
+
+  function cacheSpeech(spokenText: string, audioBlob: Blob) {
+    const cache = audioBlobCacheRef.current;
+    cache.delete(spokenText);
+    cache.set(spokenText, audioBlob);
+    while (cache.size > MAX_AUDIO_CACHE_ENTRIES) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey === undefined) break;
+      cache.delete(oldestKey);
+      setPreparedSpeechKeys((current) => {
+        const next = new Set(current);
+        next.delete(oldestKey);
+        return next;
+      });
+    }
+    setPreparedSpeechKeys((current) => new Set(current).add(spokenText));
+  }
+
+  async function runSpeechSynthesisQueue() {
+    if (speechSynthesisRunningRef.current) return;
+    speechSynthesisRunningRef.current = true;
+    try {
+      while (speechSynthesisQueueRef.current.length > 0) {
+        const task = speechSynthesisQueueRef.current.shift();
+        if (!task) continue;
+        try {
+          const cached = audioBlobCacheRef.current.get(task.spokenText);
+          if (cached) {
+            task.resolve(cached);
+            continue;
+          }
+          const session = ttsSessionRef.current;
+          if (!session || sessionVoiceRef.current !== DEFAULT_VOICE_ID) {
+            throw new Error('Piper session is not ready for Thorsten.');
+          }
+          const audioBlob = await session.predict(task.spokenText);
+          cacheSpeech(task.spokenText, audioBlob);
+          task.resolve(audioBlob);
+        } catch (error) {
+          task.reject(error);
+        } finally {
+          pendingSpeechSynthesisRef.current.delete(task.spokenText);
+          markSpeechPreparing(task.spokenText, false);
+        }
+      }
+    } finally {
+      speechSynthesisRunningRef.current = false;
+      if (speechSynthesisQueueRef.current.length > 0) {
+        void runSpeechSynthesisQueue();
+      }
+    }
+  }
+
+  function synthesizeText(spokenText: string, priority: 'interactive' | 'background') {
+    const cached = audioBlobCacheRef.current.get(spokenText);
+    if (cached) return Promise.resolve(cached);
+
+    const pending = pendingSpeechSynthesisRef.current.get(spokenText);
+    if (pending) {
+      if (priority === 'interactive') {
+        const taskIndex = speechSynthesisQueueRef.current.findIndex(
+          (task) => task.spokenText === spokenText,
+        );
+        if (taskIndex > 0) {
+          const [task] = speechSynthesisQueueRef.current.splice(taskIndex, 1);
+          speechSynthesisQueueRef.current.unshift(task);
+        }
+      }
+      return pending;
+    }
+
+    let resolveTask!: (audio: Blob) => void;
+    let rejectTask!: (error: unknown) => void;
+    const promise = new Promise<Blob>((resolve, reject) => {
+      resolveTask = resolve;
+      rejectTask = reject;
+    });
+    const task = { spokenText, resolve: resolveTask, reject: rejectTask };
+    if (priority === 'interactive') speechSynthesisQueueRef.current.unshift(task);
+    else speechSynthesisQueueRef.current.push(task);
+    pendingSpeechSynthesisRef.current.set(spokenText, promise);
+    markSpeechPreparing(spokenText, true);
+    void runSpeechSynthesisQueue();
+    return promise;
+  }
+
+  useEffect(() => {
+    if (!voiceReady || sessionVoiceRef.current !== DEFAULT_VOICE_ID) return;
+    let cancelled = false;
+    async function prepareCourtAnnouncements() {
+      for (const text of courtAnnouncements.values()) {
+        if (cancelled) return;
+        try {
+          await synthesizeText(text, 'background');
+        } catch (error) {
+          console.error('Begegnungsansage konnte nicht vorbereitet werden.', error);
+        }
+      }
+    }
+    void prepareCourtAnnouncements();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run only when a ready encounter, the active voice, or the dictionary changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courtAnnouncements, voiceReady]);
+
   async function speakText(
     text: string,
     progressLabel: string,
@@ -707,7 +862,7 @@ export default function Home() {
       const spokenText = dictionaryAlreadyApplied
         ? text
         : applyPronunciationDictionary(text, mergedPronunciationDictionary);
-      const audioBlob = await session.predict(spokenText);
+      const audioBlob = await synthesizeText(spokenText, 'interactive');
       stopCurrentAudio();
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
@@ -741,17 +896,8 @@ export default function Home() {
   }
 
   async function announceCourt(court: Court) {
-    const first = court.players[0] ? playerById.get(court.players[0]) : null;
-    const second = court.players[1] ? playerById.get(court.players[1]) : null;
-    if (!first || !second || voiceBusy) return;
-
-    const text = buildCourtAnnouncement(
-      court.id,
-      divisionOf(first),
-      first.name,
-      second.name,
-      mergedPronunciationDictionary,
-    );
+    const text = courtAnnouncements.get(court.id);
+    if (!text || voiceBusy) return;
     await speakText(text, `Ansage für Feld ${court.id} …`, true);
   }
 
@@ -834,6 +980,31 @@ export default function Home() {
           <h1>RallyCue</h1>
         </div>
         <div className="topbar-actions">
+          <button
+            aria-label="Turnierdaten sichern"
+            className="topbar-data-button"
+            onClick={exportTournamentData}
+            title="Turnierdaten sichern"
+            type="button"
+          >
+            Export
+          </button>
+          <button
+            aria-label="Sicherung laden"
+            className="topbar-data-button"
+            onClick={() => backupInputRef.current?.click()}
+            title="Sicherung laden"
+            type="button"
+          >
+            Import
+          </button>
+          <input
+            ref={backupInputRef}
+            accept="application/json,.json"
+            className="visually-hidden"
+            onChange={(event) => void importTournamentData(event)}
+            type="file"
+          />
           {PWA_ENABLED && !isStandalone && (
             <button className="install-button" onClick={() => void installApp()} type="button">
               App installieren
@@ -874,7 +1045,7 @@ export default function Home() {
           <div className="filter-row" aria-label="Altersklasse filtern">
             {['Alle', ...AGE_GROUPS.filter((ageGroup) => players.some((player) => player.ageGroup === ageGroup))].map((ageGroup) => (
               <button
-                className={`filter-chip ${filter === ageGroup ? 'active' : ''}`}
+                className={`filter-chip ${ageGroup === 'Alle' ? 'filter-chip-all' : ageToneClass(ageGroup as AgeGroup)} ${filter === ageGroup ? 'active' : ''}`}
                 key={ageGroup}
                 onClick={() => setFilter(ageGroup)}
                 type="button"
@@ -901,7 +1072,10 @@ export default function Home() {
             {playerGroups.map(({ key, ageGroup, category, players: groupPlayers }) => (
               <section className="player-group" key={key}>
                 <div className="group-title">
-                  <span>{ageGroup} · {category}</span>
+                  <span className="group-label">
+                    <span className={`group-age ${ageToneClass(ageGroup)}`}>{ageGroup}</span>
+                    <span>{category}</span>
+                  </span>
                   <span>{groupPlayers.length} {groupPlayers.length === 1 ? 'Spieler' : 'Spieler'}</span>
                 </div>
                 {groupPlayers.map((player) => {
@@ -942,7 +1116,7 @@ export default function Home() {
                         tabIndex={0}
                         title={targetInvalid && targetDecision.status === 'rejected' ? targetDecision.message : undefined}
                       >
-                        <span className={`avatar avatar-${player.ageGroup === 'U13' ? 'mint' : 'lavender'}`}>{initials(player.name)}</span>
+                        <span className={`avatar ${ageToneClass(player.ageGroup)}`}>{initials(player.name)}</span>
                         <span className="player-copy">
                           <span className="player-name">{player.name}</span>
                           <span className="player-division">{player.category}{assignedCourt ? ` · Feld ${assignedCourt}` : ''}</span>
@@ -971,24 +1145,6 @@ export default function Home() {
               <h2>Feldübersicht</h2>
             </div>
             <p>Spieler ziehen oder anklicken und einem Platz zuweisen</p>
-          </div>
-
-          <div className="tournament-tools">
-            <div>
-              <strong>Turnierdaten</strong>
-              <span>Lokale Sicherung für diesen Browser</span>
-            </div>
-            <div className="tournament-tool-actions">
-              <button onClick={exportTournamentData} type="button">Turnierdaten sichern</button>
-              <button onClick={() => backupInputRef.current?.click()} type="button">Sicherung laden</button>
-              <input
-                ref={backupInputRef}
-                accept="application/json,.json"
-                className="visually-hidden"
-                onChange={(event) => void importTournamentData(event)}
-                type="file"
-              />
-            </div>
           </div>
 
           {storageWarning && (
@@ -1028,6 +1184,17 @@ export default function Home() {
               const second = court.players[1] ? playerById.get(court.players[1]) : null;
               const ready = Boolean(first && second && divisionOf(first) === divisionOf(second));
               const group = first ? divisionOf(first) : second ? divisionOf(second) : null;
+              const groupAge = first?.ageGroup ?? second?.ageGroup ?? null;
+              const announcementText = courtAnnouncements.get(court.id);
+              const announcementPrepared = Boolean(
+                announcementText && preparedSpeechKeys.has(announcementText),
+              );
+              const announcementPreparing = Boolean(
+                announcementText && preparingSpeechKeys.has(announcementText),
+              );
+              const announcementLoading = Boolean(
+                ready && !announcementPrepared && (announcementPreparing || voiceBusy),
+              );
               return (
                 <article className={`court-card ${ready ? 'ready' : ''}`} key={court.id}>
                   <div className="court-card-head">
@@ -1035,7 +1202,9 @@ export default function Home() {
                       <span className="court-number">Feld {court.id}</span>
                     </div>
                     <div className="court-card-actions">
-                      {group && <span className="group-badge">{group}</span>}
+                      {group && groupAge && (
+                        <span className={`group-badge ${ageToneClass(groupAge)}`}>{group}</span>
+                      )}
                       {court.players.some(Boolean) && (
                         <button
                           className="clear-court-button"
@@ -1080,7 +1249,7 @@ export default function Home() {
                           >
                             {player ? (
                               <>
-                                <span className="slot-avatar">{initials(player.name)}</span>
+                                <span className={`slot-avatar ${ageToneClass(player.ageGroup)}`}>{initials(player.name)}</span>
                                 <span className="slot-name">{player.name}</span>
                               </>
                             ) : (
@@ -1101,13 +1270,24 @@ export default function Home() {
                     })}
                   </div>
                   <button
-                    className="announce-button"
-                    disabled={!ready || voiceBusy}
+                    className={`announce-button ${announcementPrepared ? 'prepared' : ''} ${announcementLoading ? 'preparing' : ''}`}
+                    disabled={!ready || voiceBusy || announcementPreparing}
                     onClick={() => void announceCourt(court)}
                     type="button"
                   >
-                    <span aria-hidden="true" className="speaker-glyph">◖))</span>
-                    {ready ? 'Begegnung aufrufen' : 'Zwei passende Spieler zuweisen'}
+                    {!ready ? (
+                      'Zwei passende Spieler zuweisen'
+                    ) : announcementLoading ? (
+                      <span className="announcement-preload" aria-label="Ansage wird vorbereitet">
+                        <span aria-hidden="true"><span /></span>
+                        <small>Ansage wird vorbereitet</small>
+                      </span>
+                    ) : (
+                      <>
+                        <span aria-hidden="true" className="speaker-glyph">◖))</span>
+                        Begegnung aufrufen
+                      </>
+                    )}
                   </button>
                 </article>
               );
@@ -1373,12 +1553,11 @@ export default function Home() {
                 Auf Feld {pendingOverwrite.courtId} ist dieser Platz bereits belegt. Prüfe den Wechsel bitte kurz, bevor er übernommen wird.
               </p>
               <div className="overwrite-summary">
-                <div>
+                <div className="overwrite-state">
                   <span>Bisher</span>
                   <strong>{existingPlayer?.name}</strong>
                 </div>
-                <span className="overwrite-arrow" aria-hidden="true">→</span>
-                <div>
+                <div className="overwrite-state overwrite-state-new">
                   <span>Neu</span>
                   <strong>{incomingPlayer?.name}</strong>
                 </div>

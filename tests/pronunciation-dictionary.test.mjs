@@ -12,14 +12,14 @@ import {
 
 const builtIns = mergePronunciationDictionaries([]);
 
-test('das mitgelieferte Wörterbuch enthält genau die 34 geprüften Einträge', () => {
-  assert.equal(BUILTIN_PRONUNCIATION_DICTIONARY.length, 34);
+test('das mitgelieferte Wörterbuch enthält genau die 42 geprüften Einträge', () => {
+  assert.equal(BUILTIN_PRONUNCIATION_DICTIONARY.length, 42);
 });
 
 test('zentrale Problemnamen werden für Piper korrigiert', () => {
   assert.equal(
     applyPronunciationDictionary('Marcel, Nikhilesh, Nguyen und Zheng.', builtIns),
-    'Marsell, Nikhilesch, Nüyen und Dscheng.',
+    'Marsell, Nikhilesch, Nüyen und Dschang.',
   );
 });
 
@@ -44,6 +44,16 @@ test('Bindestriche und Apostrophe bilden sinnvolle Namensgrenzen', () => {
   );
 });
 
+test('weitere Turniernamen erhalten die gewünschte deutsche Lautnäherung', () => {
+  assert.equal(
+    applyPronunciationDictionary(
+      'Medina Stella Freerk Sievers Zheng Hoang Sidita Xheka Reichstein Ben George Max',
+      builtIns,
+    ),
+    'Meddina Sstella Frärk Siewers Dschang Hoang Sidieta Dschäka Raichschtain Benn Dschordsch Macks',
+  );
+});
+
 test('Vor- und Nachnamen werden korrigiert, ohne die Namensmelodie zu zerhacken', () => {
   assert.equal(
     prepareNameForAnnouncement('Sally Chen Xuan Zhu', builtIns),
@@ -51,11 +61,11 @@ test('Vor- und Nachnamen werden korrigiert, ohne die Namensmelodie zu zerhacken'
   );
   assert.equal(
     prepareNameForAnnouncement('Tim Hoang Nguyen', builtIns),
-    'Tim Hwang Nüyen',
+    'Tim Hoang Nüyen',
   );
   assert.equal(
     prepareNameForAnnouncement('Stella Ying Loi', builtIns),
-    'Stella Jing Loi',
+    'Sstella Jing Loi',
   );
 });
 
@@ -78,7 +88,7 @@ test('Begegnungsansagen setzen nur vor gegen eine weiche Sprechpause', () => {
       'Lucas Chen Xuan Zhu',
       builtIns,
     ),
-    'Es spielen auf Feld 1, Jungen Einzel U13: Tim Hwang Nüyen, gegen Lucas Schän Schüän Dschu. Ich wiederhole: Tim Hwang Nüyen, gegen Lucas Schän Schüän Dschu, auf Feld 1.',
+    'Es spielen auf Feld 1, Jungen Einzel U13: Tim Hoang Nüyen, gegen Lucas Schän Schüän Dschu. Ich wiederhole: Tim Hoang Nüyen, gegen Lucas Schän Schüän Dschu, auf Feld 1.',
   );
 });
 
