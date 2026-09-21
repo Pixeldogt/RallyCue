@@ -305,6 +305,9 @@ button { color: inherit; }
 .dictionary-error { margin: 10px 2px 0; color: #9c3156; font-size: 11px; font-weight: 650; }
 .dictionary-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .dictionary-editor-actions button, .dictionary-add-button { height: 38px; padding: 0 14px; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 700; }
+.dictionary-preview-button { border: 1px solid rgba(104, 69, 183, .28); background: white; color: var(--primary-dark); }
+.dictionary-preview-button:hover:not(:disabled) { background: #f7f2ff; }
+.dictionary-preview-button:disabled { cursor: wait; opacity: .55; }
 .dictionary-add-button { width: 100%; margin-top: 12px; border: 1px dashed rgba(104, 69, 183, .35); background: white; color: var(--primary-dark); }
 .dictionary-add-button:hover { background: var(--primary-soft); }
 .dictionary-dialog-actions { justify-content: flex-end; margin-top: 18px; }

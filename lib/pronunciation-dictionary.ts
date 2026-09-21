@@ -29,6 +29,7 @@ export const BUILTIN_PRONUNCIATION_DICTIONARY = [
   { source: 'Yezda', replacement: 'Jesda' },
   { source: 'Xheka', replacement: 'Dschäka' },
   { source: 'Zheng', replacement: 'Dschang' },
+  { source: 'Zhang', replacement: 'Dschang' },
   { source: 'Zhu', replacement: 'Dschu' },
   { source: 'Leia', replacement: 'Leja' },
   { source: 'Ying', replacement: 'Jing' },
@@ -39,7 +40,9 @@ export const BUILTIN_PRONUNCIATION_DICTIONARY = [
   { source: 'Chen', replacement: 'Schän' },
   { source: 'Xuan', replacement: 'Schüän' },
   { source: 'Medina', replacement: 'Meddina' },
-  { source: 'Stella', replacement: 'Sstella' },
+  // U+034F keeps the visible spelling intact but prevents eSpeak from turning
+  // the initial "St" into the German "Scht" sound.
+  { source: 'Stella', replacement: 'S\u034Ftella' },
   { source: 'Freerk', replacement: 'Frärk' },
   { source: 'Sievers', replacement: 'Siewers' },
   { source: 'Sidita', replacement: 'Sidieta' },

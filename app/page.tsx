@@ -1511,7 +1511,7 @@ export default function Home() {
                   <div className="dictionary-entry-actions">
                     <button
                       disabled={voiceBusy}
-                      onClick={() => void speakText(`Es spielt ${entry.replacement}.`, 'Aussprache testen …')}
+                      onClick={() => void speakText(`Es spielt ${entry.replacement}.`, 'Aussprache testen …', true)}
                       type="button"
                     >
                       Testen
@@ -1561,6 +1561,14 @@ export default function Home() {
                 {pronunciationError && <p className="dictionary-error" role="alert">{pronunciationError}</p>}
                 <div className="dictionary-editor-actions">
                   <button className="cancel-button" onClick={resetPronunciationEditor} type="button">Abbrechen</button>
+                  <button
+                    className="dictionary-preview-button"
+                    disabled={voiceBusy || !pronunciationReplacement.trim()}
+                    onClick={() => void speakText(`Es spielt ${pronunciationReplacement.trim()}.`, 'Aussprache testen …', true)}
+                    type="button"
+                  >
+                    Vorschau
+                  </button>
                   <button className="save-button" type="submit">Speichern</button>
                 </div>
               </form>

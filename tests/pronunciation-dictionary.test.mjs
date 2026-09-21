@@ -12,8 +12,8 @@ import {
 
 const builtIns = mergePronunciationDictionaries([]);
 
-test('das mitgelieferte Wörterbuch enthält genau die 42 geprüften Einträge', () => {
-  assert.equal(BUILTIN_PRONUNCIATION_DICTIONARY.length, 42);
+test('das mitgelieferte Wörterbuch enthält genau die 43 geprüften Einträge', () => {
+  assert.equal(BUILTIN_PRONUNCIATION_DICTIONARY.length, 43);
 });
 
 test('zentrale Problemnamen werden für Piper korrigiert', () => {
@@ -47,10 +47,10 @@ test('Bindestriche und Apostrophe bilden sinnvolle Namensgrenzen', () => {
 test('weitere Turniernamen erhalten die gewünschte deutsche Lautnäherung', () => {
   assert.equal(
     applyPronunciationDictionary(
-      'Medina Stella Freerk Sievers Zheng Hoang Sidita Xheka Reichstein Ben George Max',
+      'Medina Stella Freerk Sievers Zheng Zhang Hoang Sidita Xheka Reichstein Ben George Max',
       builtIns,
     ),
-    'Meddina Sstella Frärk Siewers Dschang Hoang Sidieta Dschäka Raichschtain Benn Dschordsch Macks',
+    'Meddina S\u034Ftella Frärk Siewers Dschang Dschang Hoang Sidieta Dschäka Raichschtain Benn Dschordsch Macks',
   );
 });
 
@@ -65,7 +65,7 @@ test('Vor- und Nachnamen werden korrigiert, ohne die Namensmelodie zu zerhacken'
   );
   assert.equal(
     prepareNameForAnnouncement('Stella Ying Loi', builtIns),
-    'Sstella Jing Loi',
+    'S\u034Ftella Jing Loi',
   );
 });
 
