@@ -53,12 +53,13 @@ button { color: inherit; }
 
 .brand-mark img { width: 48px; height: 48px; object-fit: contain; }
 .brand-copy h1 { margin: 0; font-family: var(--font-brand), cursive; font-size: 26px; font-weight: 400; line-height: 1; letter-spacing: .2px; }
-.topbar-actions { display: flex; align-items: center; gap: 9px; margin-left: auto; }
-.topbar-data-button { display: flex; height: 39px; padding: 0 12px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--outline); border-radius: 999px; background: white; color: #625a69; cursor: pointer; font-size: 13px; font-weight: 700; }
+.topbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; margin-left: auto; }
+.topbar-data-button { display: flex; width: 96px; height: 39px; padding: 0 12px; flex: 0 0 96px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--outline); border-radius: 999px; background: white; color: #625a69; cursor: pointer; font-size: 13px; font-weight: 700; }
 .announcement-settings-button { display: grid; width: 39px; height: 39px; padding: 0; place-items: center; border: 1px solid var(--outline); border-radius: 50%; background: white; color: #625a69; cursor: pointer; }
 .topbar-data-button svg, .announcement-settings-button svg { width: 20px; height: 20px; fill: currentColor; }
 .topbar-data-button:hover { border-color: rgba(104, 69, 183, .28); background: var(--primary-soft); color: var(--primary-dark); }
-.install-button { height: 39px; padding: 0 14px; border: 1px solid rgba(104, 69, 183, .25); border-radius: 999px; background: white; color: var(--primary-dark); cursor: pointer; font-size: 13px; font-weight: 700; }
+.install-slot { display: block; width: 126px; height: 39px; flex: 0 0 126px; }
+.install-button { width: 100%; height: 39px; padding: 0 14px; border: 1px solid rgba(104, 69, 183, .25); border-radius: 999px; background: white; color: var(--primary-dark); cursor: pointer; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .install-button:hover { background: var(--primary-soft); }
 .announcement-settings-button { color: var(--primary-dark); }
 .announcement-settings-button:hover { border-color: rgba(104, 69, 183, .28); background: var(--primary-soft); }
@@ -77,7 +78,7 @@ button { color: inherit; }
   font-size: 13px;
   font-weight: 650;
 }
-.voice-status { min-width: 152px; justify-content: flex-start; }
+.voice-status { width: 212px; min-width: 212px; flex: 0 0 212px; justify-content: flex-start; white-space: nowrap; }
 
 .event-status span,
 .voice-status > span { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 4px rgba(104, 69, 183, .13); }

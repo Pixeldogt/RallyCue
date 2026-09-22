@@ -1008,17 +1008,17 @@ export default function Home() {
       }
 
       stopCurrentAudio();
-      ttsSessionRef.current?.dispose?.();
-      ttsSessionRef.current = null;
-      sessionVoiceRef.current = null;
+      if (ttsSessionRef.current && sessionVoiceRef.current === DEFAULT_VOICE_ID) {
+        setVoiceBusy(false);
+        setVoiceReady(true);
+        setVoiceStatus('Stimme bereit');
+      }
       setPlayers(result.value.players);
       setCourts(result.value.courts);
       setCustomPronunciations(result.value.pronunciationDictionary ?? []);
       if (result.value.settings) {
         setSelectedSpeedId(result.value.settings.speedId);
       }
-      setVoiceReady(false);
-      setVoiceStatus('Stimme wird geprüft …');
       setStorageWarning(null);
       setCanPersist(true);
       clearAssignmentSelection();
@@ -1066,10 +1066,14 @@ export default function Home() {
             onChange={(event) => void importTournamentData(event)}
             type="file"
           />
-          {PWA_ENABLED && !isStandalone && (installPrompt || manualInstallPlatform) && (
-            <button className="install-button" onClick={() => void installApp()} type="button">
-              App installieren
-            </button>
+          {PWA_ENABLED && (
+            <span className="install-slot">
+              {!isStandalone && (installPrompt || manualInstallPlatform) && (
+                <button className="install-button" onClick={() => void installApp()} type="button">
+                  App installieren
+                </button>
+              )}
+            </span>
           )}
           {voiceReady ? (
             <span aria-live="polite" className="voice-status ready" role="status">
