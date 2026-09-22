@@ -54,7 +54,8 @@ button { color: inherit; }
 .brand-mark img { width: 48px; height: 48px; object-fit: contain; }
 .brand-copy h1 { margin: 0; font-family: var(--font-brand), cursive; font-size: 26px; font-weight: 400; line-height: 1; letter-spacing: .2px; }
 .topbar-actions { display: flex; align-items: center; gap: 9px; margin-left: auto; }
-.topbar-data-button, .announcement-settings-button { display: grid; width: 39px; height: 39px; padding: 0; place-items: center; border: 1px solid var(--outline); border-radius: 50%; background: white; color: #625a69; cursor: pointer; }
+.topbar-data-button { display: flex; height: 39px; padding: 0 12px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--outline); border-radius: 999px; background: white; color: #625a69; cursor: pointer; font-size: 13px; font-weight: 700; }
+.announcement-settings-button { display: grid; width: 39px; height: 39px; padding: 0; place-items: center; border: 1px solid var(--outline); border-radius: 50%; background: white; color: #625a69; cursor: pointer; }
 .topbar-data-button svg, .announcement-settings-button svg { width: 20px; height: 20px; fill: currentColor; }
 .topbar-data-button:hover { border-color: rgba(104, 69, 183, .28); background: var(--primary-soft); color: var(--primary-dark); }
 .install-button { height: 39px; padding: 0 14px; border: 1px solid rgba(104, 69, 183, .25); border-radius: 999px; background: white; color: var(--primary-dark); cursor: pointer; font-size: 13px; font-weight: 700; }
@@ -82,6 +83,9 @@ button { color: inherit; }
 .voice-status > span { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 4px rgba(104, 69, 183, .13); }
 .voice-status.ready { background: #eff9f2; color: #276442; }
 .voice-status.ready > span { background: #43a86b; box-shadow: 0 0 0 4px rgba(67, 168, 107, .13); }
+.voice-status:disabled { cursor: wait; opacity: .78; }
+.voice-status.actionable { cursor: pointer; }
+.voice-status.actionable:hover { background: #e9defe; }
 .workspace { display: grid; grid-template-columns: 322px minmax(760px, 1fr); min-height: calc(100vh - 82px); }
 
 .player-panel {

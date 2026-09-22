@@ -76,6 +76,8 @@ type VoicePreparationOptions = {
   background: boolean;
 };
 
+type ManualInstallPlatform = 'safari-mac' | 'mobile';
+
 type SpeechSynthesisTask = {
   spokenText: string;
   resolve: (audio: Blob) => void;
@@ -180,6 +182,8 @@ export default function Home() {
   );
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [manualInstallPlatform, setManualInstallPlatform] =
+    useState<ManualInstallPlatform | null>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
@@ -360,9 +364,19 @@ export default function Home() {
 
     const standaloneTimer = window.setTimeout(() => {
       const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+      const userAgent = navigator.userAgent;
+      const isAppleMobile =
+        /iPad|iPhone|iPod/u.test(userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isSafari =
+        /Safari/u.test(userAgent) &&
+        !/Chrome|Chromium|CriOS|Edg|OPR|FxiOS/u.test(userAgent);
       setIsStandalone(
         window.matchMedia('(display-mode: standalone)').matches ||
           standaloneNavigator.standalone === true,
+      );
+      setManualInstallPlatform(
+        isAppleMobile ? 'mobile' : isSafari ? 'safari-mac' : null,
       );
     }, 0);
 
@@ -748,7 +762,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated) return;
-    void prepareVoice({ allowDownload: false, silent: true, background: true });
+    void prepareVoice({ allowDownload: true, silent: true, background: true });
     // Background warm-up is intentionally tied only to the one-time hydration transition.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
@@ -925,13 +939,18 @@ export default function Home() {
 
   async function installApp() {
     if (!installPrompt) {
-      showNotice('Im Browsermenü „App installieren“ oder „Zum Dock hinzufügen“ auswählen.');
+      showNotice(
+        manualInstallPlatform === 'safari-mac'
+          ? 'In Safari „Teilen“ oder „Ablage“ öffnen und „Zum Dock hinzufügen“ auswählen.'
+          : 'Im Browser „Teilen“ öffnen und „Zum Home-Bildschirm“ auswählen.',
+      );
       return;
     }
 
     await installPrompt.prompt();
     const choice = await installPrompt.userChoice;
-    if (choice.outcome === 'accepted') setInstallPrompt(null);
+    setInstallPrompt(null);
+    if (choice.outcome === 'accepted') setIsStandalone(true);
   }
 
   async function announceCourt(court: Court) {
@@ -1028,6 +1047,7 @@ export default function Home() {
             type="button"
           >
             <MaterialSymbol name="download" />
+            <span>Export</span>
           </button>
           <button
             aria-label="Sicherung laden"
@@ -1037,6 +1057,7 @@ export default function Home() {
             type="button"
           >
             <MaterialSymbol name="upload" />
+            <span>Import</span>
           </button>
           <input
             ref={backupInputRef}
@@ -1045,19 +1066,30 @@ export default function Home() {
             onChange={(event) => void importTournamentData(event)}
             type="file"
           />
-          {PWA_ENABLED && !isStandalone && (
+          {PWA_ENABLED && !isStandalone && (installPrompt || manualInstallPlatform) && (
             <button className="install-button" onClick={() => void installApp()} type="button">
               App installieren
             </button>
           )}
-          <span
-            aria-live="polite"
-            className={`voice-status ${voiceReady ? 'ready' : ''}`}
-            role="status"
-          >
-            <span aria-hidden="true" />
-            {voiceStatus}
-          </span>
+          {voiceReady ? (
+            <span aria-live="polite" className="voice-status ready" role="status">
+              <span aria-hidden="true" />
+              {voiceStatus}
+            </span>
+          ) : (
+            <button
+              aria-live="polite"
+              aria-label={voiceBusy ? voiceStatus : `${voiceStatus}. Erneut versuchen`}
+              className={`voice-status ${voiceBusy ? '' : 'actionable'}`}
+              disabled={voiceBusy}
+              onClick={() => void ensureVoiceReady()}
+              title={voiceBusy ? undefined : 'Stimme herunterladen und vorbereiten'}
+              type="button"
+            >
+              <span aria-hidden="true" />
+              {voiceStatus}
+            </button>
+          )}
           <button
             aria-label="Ansage-Einstellungen"
             className="announcement-settings-button"
